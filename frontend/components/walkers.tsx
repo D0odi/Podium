@@ -137,8 +137,8 @@ function Walker({
           setPrevVisible(true);
           window.setTimeout(() => {
             setPrevVisible(false);
-            window.setTimeout(() => setPrevPhrase(""), 400);
-          }, 700);
+            window.setTimeout(() => setPrevPhrase(""), 1000);
+          }, 1600);
         }
         setPhrase(nextPhrase);
         setShowSpeech(true);
@@ -146,7 +146,7 @@ function Walker({
           if (cancelled) return;
           setShowSpeech(false);
           schedule();
-        }, 1200);
+        }, 4000);
       }, delay);
     };
 
@@ -195,10 +195,10 @@ function Walker({
           <motion.div
             initial={false}
             animate={
-              prevVisible ? { opacity: 0.6, y: -2 } : { opacity: 0, y: -8 }
+              prevVisible ? { opacity: 0.9, y: -2 } : { opacity: 0, y: -8 }
             }
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-md bg-card text-card-foreground/80 border px-2 py-1 text-md whitespace-nowrap shadow z-[1]"
+            transition={{ duration: 1.3, ease: "easeOut" }}
+            className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-md bg-card text-card-foreground border px-2 py-1 text-md whitespace-nowrap shadow z-[1]"
             style={{ willChange: "opacity, transform" }}
           >
             {prevPhrase}
@@ -207,7 +207,7 @@ function Walker({
         <motion.div
           initial={false}
           animate={showSpeech ? { opacity: 1, y: 0 } : { opacity: 0, y: -6 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
+          transition={{ duration: 1.2, ease: "easeOut" }}
           className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-md bg-card text-card-foreground border px-2 py-1 text-md whitespace-nowrap shadow z-[2]"
           style={{ willChange: "opacity, transform" }}
         >
@@ -632,7 +632,7 @@ function SeatedBot({
         <span className="text-5xl md:text-6xl select-none inline-block leading-none">
           {bot.avatar}
         </span>
-        <span className="text-medium select-none inline-block leading-none">
+        <span className="text-sm select-none opacity-80 tracking-wider inline-block leading-none">
           {bot.name}
         </span>
         <motion.div

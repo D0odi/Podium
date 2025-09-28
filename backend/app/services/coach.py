@@ -1,28 +1,11 @@
 import os
 import json
-import requests
 from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-
-def analyze_text(transcribed_text):
-    if not DEEPGRAM_API_KEY:
-        print("DEEPGRAM_API_KEY not set")
-        return {}
-
-    custom_topic = "Millionaires"
-    params_url = str(f"https://api.deepgram.com/v1/read?custom_topic={custom_topic}&intents=true&language=en&sentiment=true&summarize=true&topics=true&custom_topic_mode=extended")
-
-    response = requests.post(
-        params_url,
-        headers={"Authorization": f"Token {DEEPGRAM_API_KEY}"},
-        json={"text": transcribed_text},
-    )
-    return response.json()
 
 def get_coach_feedback(transcript: str):
     if not OPENROUTER_API_KEY:
@@ -41,16 +24,13 @@ def get_coach_feedback(transcript: str):
         Consider the fact that sometimes the user stutters so some words may appear twice in a row in the transcript
         """
 
-    deep_analysis = analyze_text(transcript)
-
     userPrompt = f"""
         Analyze the following speech transcript and its corresponding fluency analysis. Based on this data, provide feedback.
 
         **Speech Transcript:**
         "{transcript}"
         
-        **Deep analysis**
-        {deep_analysis}
+        You do not have external Deepgram analysis. Infer approximate metrics (wpm, speechDuration, fillerWords) heuristically from the transcript length and common filler patterns ("um", "uh", "like"). Be reasonable, not extreme.
 
         **Your Task:**
         Return a single JSON object with two main keys: "upsides" and "shortcomings".

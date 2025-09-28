@@ -1,4 +1,4 @@
-import requests
+import httpx
 import time
 import json
 
@@ -8,7 +8,7 @@ def run_test():
     # --- Part 1: Create a Room ---
     print("\n▶️ 1. Creating a new room...")
     try:
-        response = requests.post(f"{BASE_URL}/rooms")
+        response = httpx.post(f"{BASE_URL}/rooms")
         response.raise_for_status()
         room_data = response.json()
         room_id = room_data.get("id")
@@ -17,7 +17,7 @@ def run_test():
             print("❌ ERROR: Could not get Room ID from server.")
             return
         print(f"✅ Room created with ID: {room_id}\n")
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"❌ ERROR: Could not connect to the server at {BASE_URL}. Is it running?")
         print(e)
         return
@@ -41,20 +41,20 @@ def run_test():
         ]
         for part in speech_parts:
             payload = {"roomId": room_id, "text": part}
-            requests.post(f"{BASE_URL}/webhooks/deepgram", json=payload)
+            httpx.post(f"{BASE_URL}/webhooks/deepgram", json=payload)
             print(f"   - Sent: '{part}'")
            # Wait for AI reactions
         print("✅ Speech simulation complete.")
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"❌ ERROR: Failed to send transcript. {e}")
         return
 
     # --- Part 5: Get Coach Feedback ---
     print("\n▶️ 5. Ending the session and requesting final feedback from the coach...")
     try:
-        requests.post(f"{BASE_URL}/rooms/{room_id}/feedback")
+        httpx.post(f"{BASE_URL}/rooms/{room_id}/feedback")
         print("✅ Feedback requested. Check your browser console for the 'coach_feedback' event.\n")
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPError as e:
         print(f"❌ ERROR: Failed to request feedback. {e}")
         return
         

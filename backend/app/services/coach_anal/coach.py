@@ -1,13 +1,10 @@
-from openai import OpenAI
-import os
+
 import json
+from .bot import get_client
 
 
-def coach_result(OPENAI_API_KEY, transcript, deep_analysis, stutters, wpm, speech_duration, filler_words):
-    client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=OPENAI_API_KEY,
-    )
+def coach_result(transcript, deep_analysis, stutters, wpm, speech_duration, filler_words):
+    client = get_client()
 
     systemPrompt = """
         You are an expert public speaking coach named 'Madick'. Your goal is to provide clear, 

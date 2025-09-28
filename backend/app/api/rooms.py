@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import asyncio
 import uuid
+import random
 from fastapi import APIRouter, HTTPException, Request, Depends
 
 from app.schemas.room import (
@@ -11,7 +12,7 @@ from app.schemas.room import (
     Persona as SchemaPersona,
 )
 from app.events.bus import EventBus
-from app.services.bot_spawner import generatePersonaPool
+from app.services.bot_spawner import generatePersonaPool, AVATAR_EMOJIS
 from app.services.bot import Bot as ServiceBot, BotPersona, BotState
 from app.services.coach import get_coach_feedback
 
@@ -37,7 +38,9 @@ async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomRe
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Invalid persona data: {e}")
 
-        new_bot_instance = ServiceBot(personality=persona_model, state=BotState())
+        avatar = random.choice(AVATAR_EMOJIS)
+
+        new_bot_instance = ServiceBot(avatar=avatar, personality=persona_model, state=BotState())
         request.app.state.room_manager.add_bot_to_room(room_id, new_bot_instance)
 
         bot_for_api = SchemaBot(
@@ -80,7 +83,8 @@ async def add_bot(
         raise HTTPException(status_code=500, detail="Failed to create a new bot.")
 
     persona_model = BotPersona(**personas[0])
-    new_bot_instance = ServiceBot(personality=persona_model, state=BotState())
+    avatar = random.choice(AVATAR_EMOJIS)
+    new_bot_instance = ServiceBot(avatar=avatar, personality=persona_model, state=BotState())
 
     request.app.state.room_manager.add_bot_to_room(roomId, new_bot_instance)
 

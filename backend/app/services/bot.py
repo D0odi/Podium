@@ -8,7 +8,7 @@ from openai.types.chat import ChatCompletionMessageParam
 import os
 
 # OpenRouter configuration (inline constants per user request)
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_API_KEY = "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"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 class BotPersona(BaseModel):
@@ -29,14 +29,14 @@ class BotState(BaseModel):
     recentPhrases: List[str] = Field(default_factory=list)
 
 def create_system_prompt(bot):
-    return f"""You are an audience member with stance: {bot.personality.stance}, domain: {bot.personality.domain}.
+    return f"""You are an audience member with stance: {bot.personality.stance} you are described as {bot.personality.description}.
 
-React to the speech with a JSON object containing:
-- "emoji_unicode": an emoji glyph (like "🙂")
-- "micro_phrase": short phrase (max 3 words)
-- "score_delta": number from -5 to +5
+    React to the speech with a JSON object containing:
+    - "emoji_unicode": an emoji glyph (like "🙂")
+    - "micro_phrase": short phrase (max 5 words), the phrase should be relevant to the speech and the stance and description of the audience member.
+    - "score_delta": number from -5 to +5
 
-Example: {{"emoji_unicode": "🙂", "micro_phrase": "Interesting", "score_delta": 1}}"""
+    Example: {{"emoji_unicode": "🙂", "micro_phrase": "Interesting", "score_delta": 1}}"""
 
 # Reuse one async OpenAI client per process to reduce connection/setup overhead
 _shared_client: OpenAI | None = None
@@ -54,7 +54,7 @@ def get_client() -> OpenAI:
 
 class Bot(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    avatar: str = Field(default="🤖")
+    avatar: str
     personality: BotPersona
     state: BotState
 
