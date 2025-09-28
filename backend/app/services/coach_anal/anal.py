@@ -8,12 +8,13 @@ from dotenv import load_dotenv
 
 
 load_dotenv() 
-AUDIO_FILE = "lev_megaum.wav"
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENROUTER_API_KEY")
+AUDIO_FILE = "C:\\Users\\imang\\sunhacks\\Podium\\backend\\app\\services\\coach_anal\\MLKDream.wav"
+DEEPGRAM_API_KEY = "47a26aa81e2ff513670139f160e1af2429c2812d"
 
 def anal():
     transcribed_text_json = convert_speech(AUDIO_FILE, DEEPGRAM_API_KEY)
+    if not transcribed_text_json:
+        raise RuntimeError("Deepgram transcription failed; check AUDIO_FILE and API key.")
     #print (type(transcribed_text_json))
     #print(transcribed_text_json.to_json(indent = 4))
 
@@ -28,7 +29,20 @@ def anal():
     #print(json.dumps(analysis_response, indent = 4))
 
     print(transcribed_text)
-    response_coach = coach_result(OPENAI_API_KEY, transcribed_text, analysis_response, calculateLongPauseRatio(transcribed_text_json), calculateWpm (transcribed_text_json), transcribed_text_json['metadata']['duration'],  countFillerWords(transcribed_text_json))
+    response_coach = coach_result(
+        transcribed_text,
+        analysis_response,
+        transcribed_text_json,
+        calculateLongPauseRatio(transcribed_text_json),
+        calculateWpm(transcribed_text_json),
+        transcribed_text_json['metadata']['duration'],
+        countFillerWords(transcribed_text_json),
+    )
 
     print(response_coach)
+
+
+
+if __name__ == "__main__":
+    anal()
 

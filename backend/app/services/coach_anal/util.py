@@ -87,3 +87,41 @@ def calculateLongPauseRatio(response, pauseThreshold=0.3):
             longPauses += 1
     
     return longPauses / totalPauses
+
+
+def calculateMinMaxWpm(response, window_seconds: int = 5):
+    """Calculate min and max WPM over sliding windows using word timestamps.
+
+    Args:
+        response: Deepgram transcript JSON.
+        window_seconds: size of window to compute WPM.
+
+    Returns:
+        tuple(min_wpm, max_wpm)
+    """
+    try:
+        words = response["results"]["channels"][0]["alternatives"][0]["words"]
+        if not words:
+            return (0, 0)
+
+        # Build list of (time, cumulative word count)
+        times = [w["end"] for w in words]
+        min_wpm = float("inf")
+        max_wpm = 0.0
+        for i, t in enumerate(times):
+            # look back window_seconds
+            start_time = t - window_seconds
+            # find index j where times[j] >= start_time
+            j = i
+            while j > 0 and times[j - 1] >= start_time:
+                j -= 1
+            words_in_window = i - j + 1
+            duration_min = window_seconds / 60.0
+            wpm = words_in_window / duration_min
+            min_wpm = min(min_wpm, wpm)
+            max_wpm = max(max_wpm, wpm)
+        if min_wpm == float("inf"):
+            min_wpm = 0.0
+        return (round(min_wpm), round(max_wpm))
+    except Exception:
+        return (0, 0)

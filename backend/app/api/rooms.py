@@ -14,7 +14,7 @@ from app.schemas.room import (
 from app.events.bus import EventBus
 from app.services.bot_spawner import generatePersonaPool, AVATAR_EMOJIS
 from app.services.bot import Bot as ServiceBot, BotPersona, BotState
-from app.services.coach import get_coach_feedback
+from app.services.coach_anal.coach import get_coach_feedback
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
