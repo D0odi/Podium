@@ -1,7 +1,12 @@
 from typing import Dict, Any
+import os
+from dotenv import load_dotenv
 
 from deepgram import DeepgramClient, AnalyzeOptions, TextSource
 
+load_dotenv()
+
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 
 def analyze(
     transcribed_text: str,
@@ -34,7 +39,7 @@ def analyze(
     if not transcribed_text:
         raise ValueError("transcribed_text must not be empty")
 
-    dg_client = DeepgramClient("47a26aa81e2ff513670139f160e1af2429c2812d")
+    dg_client = DeepgramClient(DEEPGRAM_API_KEY)
 
     payload: TextSource = {"buffer": transcribed_text}
 

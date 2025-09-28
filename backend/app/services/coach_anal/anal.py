@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv() 
 AUDIO_FILE = "C:\\Users\\imang\\sunhacks\\Podium\\backend\\app\\services\\coach_anal\\MLKDream.wav"
-DEEPGRAM_API_KEY = "47a26aa81e2ff513670139f160e1af2429c2812d"
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 
 def anal():
     transcribed_text_json = convert_speech(AUDIO_FILE, DEEPGRAM_API_KEY)
@@ -24,7 +24,7 @@ def anal():
     transcribed_text =  transcribed_text_json['results']['channels'][0]['alternatives'][0]['transcript']
     #print(f"\n\n{transcribed_text}\n\n")
 
-    analysis_response = analyze(transcribed_text, DEEPGRAM_API_KEY)
+    analysis_response = analyze(transcribed_text)
 
     #print(json.dumps(analysis_response, indent = 4))
 

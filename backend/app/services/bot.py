@@ -6,9 +6,11 @@ from pydantic import BaseModel, Field
 from openai import OpenAI, APIError
 from openai.types.chat import ChatCompletionMessageParam
 import os
+from dotenv import load_dotenv
 
 # OpenRouter configuration (inline constants per user request)
-OPENROUTER_API_KEY = "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"
+load_dotenv()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 class BotPersona(BaseModel):
