@@ -15,13 +15,16 @@ from app.events.bus import EventBus
 from app.services.bot_spawner import generatePersonaPool, AVATAR_EMOJIS
 from app.services.bot import Bot as ServiceBot, BotPersona, BotState
 from app.services.coach_anal.coach import get_coach_feedback
+import httpx
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 @router.post("", response_model=CreateRoomResponse, status_code=201)
 async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomResponse:
     room_id = str(uuid.uuid4())
-    request.app.state.room_manager.set_category(room_id, body.category)
+    rm = request.app.state.room_manager
+    rm.set_category(room_id, body.category)
+    rm.set_duration_seconds(room_id, body.durationSeconds)
     bots_api: list[SchemaBot] = []
 
     # Create bots using a single AI-generated persona pool
@@ -67,6 +70,7 @@ async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomRe
         updatedAt=datetime.now(timezone.utc),
         bots=bots_api,
         category=body.category,
+        durationSeconds=body.durationSeconds,
     )
 
 def get_bus(request: Request) -> EventBus:
@@ -121,14 +125,19 @@ async def get_final_feedback(roomId: str, request: Request, bus: EventBus = Depe
     if not transcript:
         raise HTTPException(status_code=404, detail="No transcript found for this room.")
     
-    feedback = get_coach_feedback(transcript)
+    duration_goal = room_manager.get_duration_seconds(roomId)
+    feedback = get_coach_feedback(transcript, duration_goal)
 
     if feedback:
-        await bus.publish(
-            "coach:feedback",
-            {"roomId": roomId, "feedback": feedback}
-        )
-        return {"status": "feedback_generation_queued"}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                await client.post(
+                    f"{request.base_url}events/coach-feedback",
+                    json={"roomId": roomId, "feedback": feedback},
+                )
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"Failed to POST coach feedback: {e}")
+        return {"status": "feedback_posted"}
     
     raise HTTPException(status_code=500, detail="Failed to generate feedback.")
 

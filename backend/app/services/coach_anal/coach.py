@@ -3,7 +3,13 @@ import json
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
-from util import calculateMinMaxWpm
+from util import (
+    calculateMinMaxWpm,
+    calculateWpm,
+    countFillerWords,
+    calculateLongPauseRatio,
+)
+from analyze_text import analyze
 
 load_dotenv() 
 
@@ -20,7 +26,7 @@ def get_client():
 
 
 
-def coach_result(transcript, deep_analysis, dg_response, stutters, wpm, speech_duration, filler_words):
+def coach_result(transcript, deep_analysis, dg_response, stutters, wpm, speech_duration, filler_words, target_goal_seconds: int | None = None):
     client = get_client()
 
     systemPrompt = """
@@ -83,8 +89,8 @@ def coach_result(transcript, deep_analysis, dg_response, stutters, wpm, speech_d
     filler_count = filler_words
     filler_percent = round((filler_count / total_words) * 100, 1) if total_words else 0.0
 
-    # Duration goal – you can adjust as needed in caller
-    goal_seconds = 120  # 2-minute goal
+    # Duration goal – prefer caller-provided goal, fallback to 2 minutes
+    goal_seconds = int(target_goal_seconds) if target_goal_seconds else 120
     actual_seconds = int(speech_duration)
     deviation_seconds = actual_seconds - goal_seconds
 
@@ -194,6 +200,74 @@ def coach_result(transcript, deep_analysis, dg_response, stutters, wpm, speech_d
     return result
 
 
-def get_coach_feedback(transcript: str) -> dict:
-    """Lightweight wrapper so other modules can request feedback with only transcript."""
-    return coach_result(transcript, "", 0, 0, 0, 0)
+def get_coach_feedback(
+    transcript: str,
+    target_goal_seconds: int | None = None,
+    *,
+    speech_duration: int | None = None,
+    dg_response: dict | None = None,
+) -> dict:
+    """Compute deep analysis and fluency metrics, then call coach_result.
+
+    If a Deepgram transcript response is provided, metrics are computed using util.
+    Otherwise, we fall back where possible (e.g., filler words from raw text, WPM from
+    transcript length and provided speech_duration).
+    """
+
+    if not isinstance(transcript, str) or not transcript.strip():
+        raise ValueError("transcript must be a non-empty string")
+
+    # Required deep analysis using Deepgram Analyze API
+    deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
+    if not deepgram_api_key:
+        raise RuntimeError("DEEPGRAM_API_KEY is required for deep analysis")
+    deep_analysis = analyze(
+        transcript,
+        deepgram_api_key,
+        language="en",
+        sentiment=True,
+        intents=False,
+        summarize=False,
+        topics=True,
+    )
+
+    # Build minimal response wrapper when DG response isn't available for filler counts
+    minimal_response = {
+        "results": {"channels": [{"alternatives": [{"transcript": transcript}]}]},
+        "metadata": {"duration": speech_duration or 0},
+    }
+
+    # Filler words
+    filler_words = countFillerWords(dg_response or minimal_response)
+
+    # Long pause ratio (stutters)
+    try:
+        stutters = calculateLongPauseRatio(dg_response) if dg_response else 0
+    except Exception:
+        stutters = 0
+
+    # WPM
+    wpm = 0
+    if dg_response:
+        try:
+            wpm = calculateWpm(dg_response)
+        except Exception:
+            wpm = 0
+    elif speech_duration and speech_duration > 0:
+        try:
+            total_words = len(transcript.split())
+            wpm = round(total_words / (speech_duration / 60)) if total_words else 0
+        except Exception:
+            wpm = 0
+
+    # Call core result function
+    return coach_result(
+        transcript,
+        deep_analysis,
+        dg_response or {},
+        stutters,
+        wpm,
+        speech_duration or 0,
+        filler_words,
+        target_goal_seconds,
+    )

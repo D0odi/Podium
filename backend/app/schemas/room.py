@@ -22,6 +22,7 @@ class Bot(BaseModel):
 class CreateRoomRequest(BaseModel):
     category: str
     topic: str
+    durationSeconds: int
 
 
 class CreateRoomResponse(BaseModel):
@@ -30,6 +31,7 @@ class CreateRoomResponse(BaseModel):
     updatedAt: datetime
     bots: list[Bot] = []
     category: str
+    durationSeconds: int
 
 
 class RoomState(BaseModel):
