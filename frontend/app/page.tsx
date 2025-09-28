@@ -244,7 +244,7 @@ export default function Home() {
                                     onValueChange={(vals) =>
                                       field.onChange(vals[0])
                                     }
-                                    min={0}
+                                    min={1}
                                     max={15}
                                     step={1}
                                   />
