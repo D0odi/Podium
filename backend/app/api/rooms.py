@@ -13,8 +13,6 @@ from app.schemas.room import (
 from app.events.bus import EventBus
 from app.services.bot_spawner import generatePersonaPool
 from app.services.bot import Bot as ServiceBot, BotPersona, BotState
-from app.services.reaction_config import CATEGORIES
-import random
 from app.services.coach import get_coach_feedback
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
@@ -22,70 +20,50 @@ router = APIRouter(prefix="/rooms", tags=["rooms"])
 @router.post("", response_model=CreateRoomResponse, status_code=201)
 async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomResponse:
     room_id = str(uuid.uuid4())
-    # category if provided
-    category = None
-    try:
-        category = body.category if body is not None else None
-    except Exception:
-        category = None
-    request.app.state.room_manager.set_category(room_id, category)
+    request.app.state.room_manager.set_category(room_id, body.category)
     bots_api: list[SchemaBot] = []
 
     # Create bots using a single AI-generated persona pool
     num_bots = 10
-    try:
-        topic = body.topic.strip()
-        personas = await generatePersonaPool(topic=topic, count=num_bots)
-        print(f"[rooms] persona pool fetched count={len(personas)} topic='{topic}'")
+    topic = body.topic.strip()
+    personas = await generatePersonaPool(topic=topic, count=num_bots)
+    print(f"[rooms] persona pool fetched count={len(personas)} topic='{topic}'")
 
-        for p in personas:
-            if not isinstance(p, dict):
-                continue
-            try:
-                persona_model = BotPersona(**p)
-                new_bot_instance = ServiceBot(personality=persona_model, state=BotState())
-            except Exception:
-                new_bot_instance = None
-            if not new_bot_instance:
-                continue
-            request.app.state.room_manager.add_bot_to_room(room_id, new_bot_instance)
-            # Build API bot representation
-            # Pick a fun emoji avatar
-            avatar_choices = [
-                "😀","🙂","😎","🤔","👏","🤖","🧠","🧐","🤓","🧑‍💻",
-                "😄","😌","🤝","💡","🔥","👍","✨","🤯","😬","🫡"
-            ]
-            bot_for_api = SchemaBot(
-                id=new_bot_instance.id,
-                name=new_bot_instance.personality.name,
-                avatar=random.choice(avatar_choices),
-                persona=SchemaPersona(
-                    stance=new_bot_instance.personality.stance,
-                    domain=new_bot_instance.personality.domain,
-                    description=new_bot_instance.personality.description,
-                ),
-            )
-            bots_api.append(bot_for_api)
-            # Also persist avatar on service bot so later WS state matches POST /rooms
-            try:
-                new_bot_instance.avatar = bot_for_api.avatar  # type: ignore[attr-defined]
-            except Exception:
-                pass
-            # Log and notify via event bus
-            print(f"[rooms] bot joined room={room_id} bot={bot_for_api.model_dump()}")
-            await request.app.state.event_bus.publish("bot:join", {  # type: ignore[attr-defined]
-                "roomId": room_id,
-                "bot": bot_for_api.model_dump(),
-            })
-    except Exception as e:
-        print(f"[rooms] bot creation error for room={room_id}: {e}")
+    for p in personas:
+        if not isinstance(p, dict):
+            raise HTTPException(status_code=500, detail="Invalid persona format from generator.")
+        try:
+            persona_model = BotPersona(**p)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Invalid persona data: {e}")
+
+        new_bot_instance = ServiceBot(personality=persona_model, state=BotState())
+        request.app.state.room_manager.add_bot_to_room(room_id, new_bot_instance)
+
+        bot_for_api = SchemaBot(
+            id=new_bot_instance.id,
+            name=new_bot_instance.personality.name,
+            avatar=new_bot_instance.avatar,
+            persona=SchemaPersona(
+                stance=new_bot_instance.personality.stance,
+                domain=new_bot_instance.personality.domain,
+                description=new_bot_instance.personality.description,
+            ),
+        )
+        bots_api.append(bot_for_api)
+        # Log and notify via event bus
+        print(f"[rooms] bot joined room={room_id} bot={bot_for_api.model_dump()}")
+        await request.app.state.event_bus.publish("bot:join", {  # type: ignore[attr-defined]
+            "roomId": room_id,
+            "bot": bot_for_api.model_dump(),
+        })
 
     return CreateRoomResponse(
         id=room_id,
         createdAt=datetime.now(timezone.utc),
         updatedAt=datetime.now(timezone.utc),
         bots=bots_api,
-        category=category,
+        category=body.category,
     )
 
 def get_bus(request: Request) -> EventBus:
@@ -98,24 +76,18 @@ async def add_bot(
     bus: EventBus = Depends(get_bus),
 ) -> SchemaBot:
     personas = await generatePersonaPool(topic="AI Presentations", count=1)
-    persona_obj = personas[0] if personas else None
-    if not isinstance(persona_obj, dict):
+    if not personas or not isinstance(personas[0], dict):
         raise HTTPException(status_code=500, detail="Failed to create a new bot.")
-    try:
-        persona_model = BotPersona(**persona_obj)
-        new_bot_instance = ServiceBot(personality=persona_model, state=BotState())
-    except Exception:
-        new_bot_instance = None
 
-    if not new_bot_instance:
-        raise HTTPException(status_code=500, detail="Failed to create a new bot.")
+    persona_model = BotPersona(**personas[0])
+    new_bot_instance = ServiceBot(personality=persona_model, state=BotState())
 
     request.app.state.room_manager.add_bot_to_room(roomId, new_bot_instance)
 
     bot_for_api = SchemaBot(
         id=new_bot_instance.id,
         name=new_bot_instance.personality.name,
-        avatar="🤖",
+        avatar=new_bot_instance.avatar,
         persona=SchemaPersona(
             stance=new_bot_instance.personality.stance,
             domain=new_bot_instance.personality.domain,
