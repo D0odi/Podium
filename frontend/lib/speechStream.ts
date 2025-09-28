@@ -9,10 +9,13 @@ export type TranscriptHandler = (
 
 export type SpeechStartedHandler = (
   timestamp: number | null,
-  silenceSeconds?: number
+  payload?: any
 ) => void;
 
-export type UtteranceEndHandler = (timestamp: number | null) => void;
+export type UtteranceEndHandler = (
+  timestamp: number | null,
+  payload?: any
+) => void;
 
 export type StreamOpenHandler = () => void;
 export type StreamCloseHandler = () => void;
@@ -20,9 +23,6 @@ export type StreamCloseHandler = () => void;
 export type SpeechStreamOptions = {
   apiKey: string;
   sampleRate?: number;
-  endpointing?: number;
-  utteranceEndMs?: number;
-  language?: string;
   onTranscript?: TranscriptHandler;
   onSpeechStarted?: SpeechStartedHandler;
   onUtteranceEnd?: UtteranceEndHandler;
@@ -94,11 +94,10 @@ export class SpeechStream {
       interim_results: true,
       encoding: "linear16",
       filter_channels: true,
-      endpointing: this.options.endpointing ?? 400,
       vad_events: true,
-      utterance_end_ms: this.options.utteranceEndMs ?? 1300,
+      utterance_end_ms: 1000,
       filler_words: true,
-      language: this.options.language ?? "en",
+      language: "en",
       sample_rate: audioCtx.sampleRate,
     });
 
@@ -115,13 +114,7 @@ export class SpeechStream {
     dgConn.on(LiveTranscriptionEvents.SpeechStarted, (payload: any) => {
       const speechStartTs =
         typeof payload?.timestamp === "number" ? payload.timestamp : null;
-      const lastEndTs = this.lastUtteranceEndTsDG;
-      if (speechStartTs != null && lastEndTs != null) {
-        const silenceDG = Math.max(0, speechStartTs - lastEndTs);
-        this.options.onSpeechStarted?.(speechStartTs, silenceDG);
-      } else {
-        this.options.onSpeechStarted?.(speechStartTs, undefined);
-      }
+      this.options.onSpeechStarted?.(speechStartTs, payload);
     });
 
     dgConn.on(LiveTranscriptionEvents.UtteranceEnd, (payload: any) => {
@@ -132,7 +125,7 @@ export class SpeechStream {
           ? payload.timestamp
           : null;
       if (endTs != null) this.lastUtteranceEndTsDG = endTs;
-      this.options.onUtteranceEnd?.(endTs);
+      this.options.onUtteranceEnd?.(endTs, payload);
     });
 
     dgConn.on(LiveTranscriptionEvents.Transcript, (payload: any) => {

@@ -1,11 +1,11 @@
 "use client";
 
-import { generateBot, generateReaction, type Bot } from "@/lib/mockAudience";
+import type { Bot } from "@/lib/types";
 import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type WalkingAudienceProps = {
-  count?: number;
+  bots?: Bot[];
   className?: string;
 };
 
@@ -90,6 +90,14 @@ function Walker({
   directionRight: boolean;
 }) {
   const prefersReduced = useReducedMotion();
+
+  function generateReaction(): { emoji: string; phrase: string } {
+    const emojis = ["🙂", "👍", "🤔", "👏", "😮", "😊"];
+    const phrases = ["Nice", "Interesting", "Good", "Hmm", "Cool", "Great"];
+    const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+    const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+    return { emoji, phrase };
+  }
   const travel = Math.max(0, pathWidth - 48);
   const duration = useMemo(
     () => (slow ? 40 : 16) + Math.random() * (slow ? 25 : 12),
@@ -211,16 +219,13 @@ function Walker({
 }
 
 export default function WalkingAudience({
-  count = 12,
+  bots = [],
   className,
 }: WalkingAudienceProps) {
   const [mounted, setMounted] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const slow = true;
-  const [walkers, setWalkers] = useState<
-    Array<{ bot: Bot; directionRight: boolean }>
-  >([]);
 
   useEffect(() => {
     setMounted(true);
@@ -237,33 +242,6 @@ export default function WalkingAudience({
     return () => window.removeEventListener("resize", update);
   }, [mounted]);
 
-  useEffect(() => {
-    if (!mounted) return;
-    let cancelled = false;
-    let timer: number | undefined;
-    const spawnNext = () => {
-      if (cancelled) return;
-      setWalkers((prev) => {
-        if (prev.length >= count) return prev;
-        const next = {
-          bot: generateBot(),
-          directionRight: Math.random() < 0.5,
-        };
-        return [...prev, next];
-      });
-      const delay = 300 + Math.random() * 400; // 300ms - 700ms
-      timer = window.setTimeout(() => {
-        if (cancelled) return;
-        spawnNext();
-      }, delay);
-    };
-    spawnNext();
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [mounted, count]);
-
   if (!mounted) return null; // avoid SSR/CSR mismatch
 
   return (
@@ -274,13 +252,13 @@ export default function WalkingAudience({
       }`}
     >
       <div className="relative h-full w-full">
-        {walkers.map((w, index) => (
+        {bots.map((b, index) => (
           <Walker
-            key={`${w.bot.id}-${index}`}
-            bot={w.bot}
+            key={`${b.id}-${index}`}
+            bot={b}
             pathWidth={width}
             slow={slow}
-            directionRight={w.directionRight}
+            directionRight={Math.random() < 0.5}
           />
         ))}
       </div>
@@ -593,7 +571,6 @@ function SeatedBot({
   onMeasured?: (rect: DOMRect | null) => void;
 }) {
   const prefersReduced = useReducedMotion();
-  const facingRight = seat.x >= centerX;
   const nodeRef = useRef<HTMLDivElement>(null);
   const cbRef = useRef<((rect: DOMRect | null) => void) | null>(null);
 

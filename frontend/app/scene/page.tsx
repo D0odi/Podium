@@ -3,7 +3,7 @@
 
 import { AudioRecorderWithVisualizer } from "@/components/voice";
 import { WalkableStage } from "@/components/walkers";
-import type { Bot as AudienceBot } from "@/lib/mockAudience";
+import type { AudienceBot } from "@/lib/types";
 import { wsClient } from "@/lib/wsClient";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,19 +30,10 @@ export default function ScenePage() {
     Record<string, string | undefined>
   >({});
   const reactionTimersRef = useRef<Record<string, number>>({});
-  // Legacy ref no longer used with shared client
-  type TranscriptMeta = {
-    silence_preceding_s?: number | null;
-    [k: string]: unknown;
-  };
-  const sendTranscriptOverWs = useRef<
-    ((text: string, meta?: TranscriptMeta) => void) | null
-  >(null);
   const apiBase = useMemo(
     () => process.env.NEXT_PUBLIC_BACKEND_URL as string,
     []
   );
-  // ws base handled by shared client
 
   // Guard: require active WS connection (roomId) else send back to staging
   useEffect(() => {
@@ -76,11 +67,7 @@ export default function ScenePage() {
             [bot.id]: bot.name || bot.id,
           };
           // reflect in stage bots collection
-          const stageBot = payload.bot as {
-            id: string;
-            name: string;
-            avatar: string;
-          };
+          const stageBot = payload.bot as AudienceBot;
           setServerBots((prev) => {
             if (prev.some((b) => b.id === stageBot.id)) return prev;
             return [
@@ -89,6 +76,7 @@ export default function ScenePage() {
                 id: stageBot.id,
                 name: stageBot.name,
                 avatar: stageBot.avatar,
+                persona: stageBot.persona,
               },
             ];
           });
@@ -154,11 +142,7 @@ export default function ScenePage() {
           eventType === "state" &&
           Array.isArray((payload as any).bots)
         ) {
-          const bots = (payload as any).bots as {
-            id: string;
-            name: string;
-            avatar: string;
-          }[];
+          const bots = (payload as any).bots as AudienceBot[];
           setServerBots((prev) => {
             const existing = new Set(prev.map((b) => b.id));
             const merged = [...prev];
@@ -168,6 +152,7 @@ export default function ScenePage() {
                   id: b.id,
                   name: b.name,
                   avatar: b.avatar,
+                  persona: b.persona,
                 });
             });
             return merged;
@@ -181,11 +166,8 @@ export default function ScenePage() {
     try {
       wsClient.sendJson({ event: "state_request", payload: {} });
     } catch {}
-    sendTranscriptOverWs.current = (text: string, meta?: TranscriptMeta) =>
-      wsClient.sendClientTranscript(text, meta);
     return () => {
       unsubscribe();
-      sendTranscriptOverWs.current = null;
     };
   }, [roomId, apiBase]);
 
@@ -257,9 +239,6 @@ export default function ScenePage() {
             <AudioRecorderWithVisualizer
               roomId={roomId || undefined}
               apiBase={apiBase}
-              sendTranscript={(text: string, meta?: TranscriptMeta) =>
-                sendTranscriptOverWs.current?.(text, meta)
-              }
             />
           </div>
         </div>

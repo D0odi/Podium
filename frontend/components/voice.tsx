@@ -2,6 +2,7 @@
 "use client";
 import { SpeechStream } from "@/lib/speechStream";
 import { cn } from "@/lib/utils";
+import { transcriptWs } from "@/lib/wsClient";
 import { AnimatePresence, motion } from "framer-motion";
 import { Download, FileDown, Mic, Trash } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -11,7 +12,6 @@ type Props = {
   timerClassName?: string;
   roomId?: string;
   apiBase?: string;
-  sendTranscript?: (text: string, meta?: any) => void;
 };
 
 type Record = {
@@ -34,7 +34,6 @@ export const AudioRecorderWithVisualizer = ({
   timerClassName,
   roomId,
   apiBase,
-  sendTranscript,
 }: Props) => {
   const dbg = (...args: any[]) => {
     try {
@@ -83,30 +82,18 @@ export const AudioRecorderWithVisualizer = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<any>(null);
   const speechRef = useRef<SpeechStream | null>(null);
-  const lastUtteranceEndTsDGRef = useRef<number | null>(null);
-  const lastSpeechStartTsDGRef = useRef<number | null>(null);
-  const lastSilenceBeforeThisUtteranceRef = useRef<number | null>(null);
   const [finalText, setFinalText] = useState<string>("");
   const [interimText, setInterimText] = useState<string>("");
   const transcriptRef = useRef<HTMLDivElement>(null);
-  const postingRef = useRef<boolean>(false);
 
-  async function postTranscriptChunk(text: string, meta?: any) {
-    if (!roomId || !text) return;
-    if (postingRef.current) return; // simple back-pressure gate
-    postingRef.current = true;
+  async function ensureTranscriptWs() {
+    if (!roomId) return;
+    if (transcriptWs.isConnected()) return;
     try {
-      dbg("posting transcript chunk", {
-        roomId,
-        len: text.length,
-        preview: text.slice(0, 64),
-      });
-      if (sendTranscript) sendTranscript(text, meta);
-      dbg("posted transcript chunk OK");
-    } catch {
-      dbg("post transcript chunk failed");
-    } finally {
-      postingRef.current = false;
+      await transcriptWs.connect(roomId);
+      dbg("transcript WS connected", { roomId });
+    } catch (e) {
+      dbg("transcript WS connect error", e);
     }
   }
 
@@ -124,53 +111,28 @@ export const AudioRecorderWithVisualizer = ({
 
     const speech = new SpeechStream({
       apiKey,
-      endpointing: 400,
-      utteranceEndMs: 1300,
-      language: "en",
       onOpen: () => dbg("deepgram live open"),
       onClose: () => dbg("deepgram live close"),
-      onSpeechStarted: (ts, silence) => {
-        if (silence != null) {
-          dbg("SpeechStarted", {
-            ts,
-            silence_seconds_dg: Number(silence.toFixed(3)),
-          });
-        } else {
-          dbg("SpeechStarted", { ts });
-        }
-        try {
-          const speechStartTs = typeof ts === "number" ? ts : null;
-          lastSpeechStartTsDGRef.current = speechStartTs;
-          const lastEnd = lastUtteranceEndTsDGRef.current;
-          const silenceDG =
-            speechStartTs != null && lastEnd != null
-              ? Math.max(0, speechStartTs - lastEnd)
-              : speechStartTs != null
-              ? Math.max(0, speechStartTs)
-              : null;
-          lastSilenceBeforeThisUtteranceRef.current =
-            silenceDG != null ? silenceDG : null;
-        } catch {}
+      onSpeechStarted: async (_ts, payload) => {
+        dbg("SpeechStarted", { payload });
+        await ensureTranscriptWs();
+        transcriptWs.sendDGSpeechStarted(payload);
       },
-      onUtteranceEnd: (ts) => {
-        dbg("UtteranceEnd", { ts });
-        try {
-          lastUtteranceEndTsDGRef.current = typeof ts === "number" ? ts : null;
-        } catch {}
+      onUtteranceEnd: async (_ts, payload) => {
+        dbg("UtteranceEnd", { payload });
+        await ensureTranscriptWs();
+        transcriptWs.sendDGUtteranceEnd(payload);
       },
-      onTranscript: (text, isFinal) => {
+      onTranscript: async (text, isFinal, payload) => {
+        dbg("Trasncript", { text, payload, isFinal });
+
         if (!isFinal) {
           setInterimText(text);
         } else {
           if (text.length > 0) {
             setFinalText((prev) => (prev ? `${prev} ${text}` : text));
-            const meta: any = {
-              silence_preceding_s:
-                lastSilenceBeforeThisUtteranceRef.current ?? null,
-              speech_started_ts: lastSpeechStartTsDGRef.current ?? null,
-              last_utterance_end_ts: lastUtteranceEndTsDGRef.current ?? null,
-            };
-            postTranscriptChunk(text, meta);
+            await ensureTranscriptWs();
+            transcriptWs.sendDGTranscript(payload, text);
           }
           setInterimText("");
         }
@@ -181,6 +143,7 @@ export const AudioRecorderWithVisualizer = ({
       .start()
       .then(() => {
         setIsRecording(true);
+        ensureTranscriptWs();
         mediaRecorderRef.current = {
           stream: speech.getStream(),
           analyser: speech.getAnalyser(),
@@ -302,6 +265,9 @@ export const AudioRecorderWithVisualizer = ({
     // Close Deepgram via SpeechStream
     try {
       speechRef.current?.stop();
+    } catch {}
+    try {
+      transcriptWs.disconnect();
     } catch {}
 
     // Stop the web audio context and the analyser node

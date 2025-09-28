@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 let socket: WebSocket | null = null;
 let currentRoomId: string | null = null;
+let transcriptSocket: WebSocket | null = null;
+let transcriptRoomId: string | null = null;
 
 type MessageHandler = (data: any) => void;
 const handlers = new Set<MessageHandler>();
@@ -104,5 +106,74 @@ export const wsClient = {
     } catch {}
     socket = null;
     currentRoomId = null;
+  },
+};
+
+export const transcriptWs = {
+  async connect(roomId: string): Promise<void> {
+    const wsBase = getWsBase();
+    if (!wsBase) throw new Error("WS base not configured");
+    if (
+      transcriptSocket &&
+      transcriptSocket.readyState === WebSocket.OPEN &&
+      transcriptRoomId === roomId
+    ) {
+      return;
+    }
+    try {
+      transcriptSocket?.close();
+    } catch {}
+    const url = `${wsBase}/ws/transcript/${roomId}`;
+    transcriptSocket = new WebSocket(url);
+    transcriptRoomId = roomId;
+
+    await new Promise<void>((resolve, reject) => {
+      if (!transcriptSocket) return reject(new Error("WS init failed"));
+      const s = transcriptSocket;
+      const onOpen = () => {
+        s.removeEventListener("open", onOpen);
+        s.removeEventListener("error", onError);
+        resolve();
+      };
+      const onError = () => {
+        s.removeEventListener("open", onOpen);
+        s.removeEventListener("error", onError);
+        reject(new Error("WS connection error"));
+      };
+      s.addEventListener("open", onOpen);
+      s.addEventListener("error", onError);
+    });
+  },
+  isConnected(): boolean {
+    return Boolean(
+      transcriptSocket &&
+        transcriptSocket.readyState === WebSocket.OPEN &&
+        transcriptRoomId
+    );
+  },
+  sendJson(obj: any): void {
+    if (!transcriptSocket || transcriptSocket.readyState !== WebSocket.OPEN)
+      return;
+    try {
+      transcriptSocket.send(JSON.stringify(obj));
+    } catch {}
+  },
+  sendDGSpeechStarted(payload: any): void {
+    this.sendJson({ event: "dg_speech_started", payload });
+  },
+  sendDGUtteranceEnd(payload: any): void {
+    this.sendJson({ event: "dg_utterance_end", payload });
+  },
+  sendDGTranscript(payload: any, text?: string): void {
+    const obj: any = { event: "dg_transcript", payload };
+    if (typeof text === "string") obj.text = text;
+    this.sendJson(obj);
+  },
+  disconnect(): void {
+    try {
+      transcriptSocket?.close();
+    } catch {}
+    transcriptSocket = null;
+    transcriptRoomId = null;
   },
 };
