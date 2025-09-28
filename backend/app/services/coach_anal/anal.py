@@ -32,4 +32,3 @@ def anal():
 
     print(response_coach)
 
-anal()
