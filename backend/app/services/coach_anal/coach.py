@@ -56,6 +56,7 @@ def coach_result(transcript, deep_analysis, dg_response, stutters, wpm, speech_d
         - Keep the feedback concise, professional, and encouraging.
         - The root of the JSON should have keys: "wpm", "speechDuration", "fillerWords", "upsides", and "shortcomings".
         - Base your feedback on all provided data.
+        - Upsides and shortcomings should be clear and concise
 
         **Required JSON Format:**
         ```json
@@ -147,7 +148,7 @@ def coach_result(transcript, deep_analysis, dg_response, stutters, wpm, speech_d
     # Ask Gemini to generate upsides/shortcomings/topics
     prompt_for_gemini = (
         "You are a supportive public-speaking coach. Read the transcript provided and, in an encouraging tone, "
-        "list exactly three strengths (upsides) and three concrete areas to improve (shortcomings). "
+        "list exactly three strengths (upsides) and three concrete areas to improve (shortcomings). Upsides and shortcomings need to be clear and concise (15 words max) "
         "Also list the main topics detected. Return ONLY valid JSON with keys 'upsides', 'shortcomings', 'topics'.\n\n"
         f"TRANSCRIPT:\n{transcript[:8000]}"  # truncate to 8k chars for safety
     )
