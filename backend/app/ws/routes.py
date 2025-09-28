@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Request
 import json
+import time
 
 from app.ws.manager import ConnectionManager
 from app.events.bus import EventBus
@@ -82,5 +83,92 @@ async def websocket_room_endpoint(
                     await websocket.send_json({"event": "state", "payload": {"bots": []}})
     except WebSocketDisconnect:
         manager.disconnect(roomId, websocket)
+
+
+@router.websocket("/ws/transcript/{roomId}")
+async def websocket_transcript_endpoint(
+    websocket: WebSocket,
+    roomId: str,
+    bus: EventBus = Depends(get_bus),
+) -> None:
+    # Dedicated endpoint for receiving Deepgram live events and forwarding
+    # simplified chunks into the backend TranscriptBuffer. All timing-based
+    # calculations (silence, stutters, rhetorical pauses) are done server-side.
+    await websocket.accept()
+
+    # Initialize per-room DG tracking state on app
+    if not hasattr(websocket.app.state, "dg_state"):
+        websocket.app.state.dg_state = {}
+    room_state = websocket.app.state.dg_state.setdefault(
+        roomId, {"last_end": None, "last_speech_start": None, "last_silence": 0.0}
+    )
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                data = json.loads(raw)
+            except Exception:
+                continue
+
+            event = data.get("event")
+            payload = data.get("payload") or {}
+
+            # Handle Deepgram event types
+            if event == "dg_speech_started":
+                try:
+                    ts = payload.get("timestamp")
+                    if isinstance(ts, (int, float)):
+                        room_state["last_speech_start"] = float(ts)
+                        last_end = room_state.get("last_end")
+                        if isinstance(last_end, (int, float)):
+                            room_state["last_silence"] = max(0.0, float(ts) - float(last_end))
+                        else:
+                            # First speech start in session; treat silence as ts (>=0)
+                            room_state["last_silence"] = max(0.0, float(ts))
+                except Exception:
+                    pass
+            elif event == "dg_utterance_end":
+                try:
+                    # Prefer last_word_end if present, fallback to timestamp
+                    end_ts = (
+                        payload.get("last_word_end")
+                        if isinstance(payload.get("last_word_end"), (int, float))
+                        else payload.get("timestamp")
+                    )
+                    if isinstance(end_ts, (int, float)):
+                        room_state["last_end"] = float(end_ts)
+                except Exception:
+                    pass
+            elif event == "dg_transcript":
+                try:
+                    is_final = bool(payload.get("is_final"))
+                    text = (data.get("text") or "").strip()
+                    if not text:
+                        # Attempt to derive text from DG payload if not provided explicitly
+                        alt = ((payload or {}).get("channel") or {}).get("alternatives") or []
+                        if isinstance(alt, list) and alt:
+                            t = (alt[0] or {}).get("transcript")
+                            if isinstance(t, str):
+                                text = t.strip()
+                    if is_final and text:
+                        # Append to TranscriptBuffer with computed silence
+                        silence = float(room_state.get("last_silence") or 0.0)
+                        flushed, chunk, flush_meta = websocket.app.state.transcript_buffer.append(  # type: ignore[attr-defined]
+                            roomId, text, {"silence_preceding_s": silence}
+                        )
+                        if flushed and chunk:
+                            await bus.publish(
+                                "transcript:chunk",
+                                {"roomId": roomId, "text": chunk, "flush_meta": flush_meta},
+                            )
+                except Exception:
+                    pass
+            else:
+                # ignore other events on this endpoint
+                pass
+    except WebSocketDisconnect:
+        # Client disconnected; no shared state to clean up here
+        return
 
 

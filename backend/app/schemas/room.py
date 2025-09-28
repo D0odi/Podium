@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class Persona(BaseModel):
     stance: Literal["supportive", "skeptical", "curious"]
     domain: Literal["tech", "design", "finance"]
+    description: str
 
 
 class Bot(BaseModel):
@@ -19,20 +20,21 @@ class Bot(BaseModel):
 
 
 class CreateRoomRequest(BaseModel):
-    name: Optional[str] = None
-    category: Optional[str] = None
-    topic: Optional[str] = None
+    category: str
+    topic: str
 
 
 class CreateRoomResponse(BaseModel):
     id: str
     createdAt: datetime
+    updatedAt: datetime
     bots: list[Bot] = []
-    category: Optional[str] = None
+    category: str
 
 
 class RoomState(BaseModel):
     roomId: str
+    category: str
     bots: list[Bot]
     transcript: str = ""
     updatedAt: datetime

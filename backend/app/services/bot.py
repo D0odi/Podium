@@ -14,8 +14,7 @@ class BotPersona(BaseModel):
     name: str
     stance: Literal["supportive", "skeptical", "curious"]
     domain: Literal["tech", "design", "finance"]
-    snark: float
-    politeness: float
+    description: str
 
 class BotState(BaseModel):
     engagementScore: float = 10.0

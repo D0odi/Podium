@@ -18,21 +18,12 @@ from app.state.room_manager import RoomManager
 from app.core import registry
 from typing import Optional
 from app.services.reaction_config import (
-    STAGE1_DELAY_MIN_S,
-    STAGE1_DELAY_MAX_S,
     STAGE2_TIMEOUT_S,
-    choose_emoji_phrase,
-    score_text,
-    map_score_to_bucket,
     get_phrases,
-    adjust_bucket_for_meta,
-    select_phrase_for_bucket,
-    apply_recent_emoji_lru,
-    apply_recent_phrase_lru,
-    should_suppress_fire,
     should_escalate,
     compute_reaction_probability,
 )
+from app.services import reaction_config as rc
 
 app = FastAPI(title="Podium Backend", version="0.1.0")
 
@@ -82,7 +73,7 @@ async def _on_transcript_chunk(payload: dict) -> None:
     flush_meta = payload.get("flush_meta") or {}
 
     # Get tail context BEFORE appending current chunk to avoid duplication
-    tail_context = app.state.room_manager.get_transcript_tail_chars(room_id, 200)
+    tail_context = app.state.room_manager.get_transcript_tail_chars(room_id, 100)
     await app.state.ws_manager.broadcast_json(
         room_id, {"event": "transcript", "payload": payload}
     )
@@ -91,61 +82,72 @@ async def _on_transcript_chunk(payload: dict) -> None:
 
     async def stage1_react(bot: Bot, text: str, fm: dict) -> dict:
         """Generate a quick, local reaction (Stage-1) without model calls.
-        Uses scoring, bucket mapping, and lightweight adjustments for delivery cues.
+        Simple mapping based on punctuation and keyword hits.
         """
         is_question = bool(fm.get("question"))
         is_exclaim = bool(fm.get("exclaim"))
-        stutters = int(fm.get("stutter_count") or 0)
-        rhet = bool(fm.get("rhetorical_pause"))
 
         cat: Optional[str] = app.state.room_manager.get_category(room_id)
         stance = bot.personality.stance
         domain = bot.personality.domain
 
-        # Score and map to coarse sentiment bucket
-        score = score_text(text, cat, stance, domain, is_question, is_exclaim)
-        bucket = map_score_to_bucket(score, is_question)
+        # Keyword hit counts from category presets
+        preset = getattr(rc, "CATEGORIES", {}).get(cat or "", {})
+        txt = (text or "").lower()
+        pos_hits = 0
+        neg_hits = 0
+        try:
+            for kw in preset.get("keywords_pos", []):
+                if kw.lower() in txt:
+                    pos_hits += 1
+            for kw in preset.get("keywords_neg", []):
+                if kw.lower() in txt:
+                    neg_hits += 1
+        except Exception:
+            pos_hits = pos_hits
+            neg_hits = neg_hits
 
-        # Adjust bucket for stance and delivery cues
-        bucket = adjust_bucket_for_meta(bucket, stance, stutters, rhet)
+        # Bucket selection: prioritize questions, then negatives, else exclaim/positive/neutral
+        if is_question:
+            bucket = "curious"
+        elif neg_hits > pos_hits:
+            bucket = "negative"
+        elif is_exclaim or pos_hits > 0:
+            bucket = "positive"
+        else:
+            bucket = "neutral"
 
-        # Choose emoji and phrase for bucket
-        emoji, phrase, delta = choose_emoji_phrase(bucket, stance, domain, stutters, rhet)
+        # Pick an emoji from config
+        emoji_groups = getattr(rc, "EMOJI", {})
+        group = emoji_groups.get({
+            "positive": "pos",
+            "negative": "neg",
+            "curious": "curious",
+            "neutral": "neutral",
+            "anticipation": "neutral",
+        }.get(bucket, "neutral"), ["😐"])  # map to available groups
+        emoji = group[0] if isinstance(group, list) and group else "😐"
 
-        # Prefer random phrase selection avoiding recent repeats
-        phrase = select_phrase_for_bucket(
-            stance,
-            bucket,
-            domain,
-            len(bot.state.recentEmojis),
-            bot.state.recentPhrases,
-        ) or phrase
+        # Choose a short phrase
+        phrases = get_phrases(stance, bucket, domain) or []
+        default_phrase = getattr(rc, "DEFAULT_PHRASE", {}).get(bucket, "")
+        phrase = phrases[random.randint(0, len(phrases) - 1)] if phrases else default_phrase
 
-        # Apply recent-emoji LRU to reduce repetition and update state
-        recent = bot.state.recentEmojis
-        emoji, recent = apply_recent_emoji_lru(emoji, recent)
-        bot.state.recentEmojis = recent  # type: ignore[attr-defined]
+        await asyncio.sleep(random.uniform(0.2, 2))
 
-        # Track recent phrases to avoid repetition
-        recent_phrases = bot.state.recentPhrases
-        phrase, recent_phrases = apply_recent_phrase_lru(phrase, recent_phrases)
-        bot.state.recentPhrases = recent_phrases  # type: ignore[attr-defined]
-
-        # timer for realistic reaction time
-        await asyncio.sleep(random.uniform(STAGE1_DELAY_MIN_S, STAGE1_DELAY_MAX_S))
-
-        return {"emoji_unicode": emoji, "micro_phrase": phrase, "score_delta": delta}
+        # Stage-1 no longer computes any score delta
+        return {"emoji_unicode": emoji, "micro_phrase": phrase, "score_delta": 0}
 
     async def generate_and_publish_reactions():
+
+
         async def one_bot_react(bot):
             try:
-
-                
                 start = asyncio.get_event_loop().time()
                 stance = bot.personality.stance
                 is_question = bool(flush_meta.get("question"))
                 # suppression: use configured probability to ignore entirely
-                if random.random() < 0.45:
+                if random.random() < 0.50:
                     reaction = None
                 else:
                     # base: allowed only on questions for certain stances
@@ -167,7 +169,7 @@ async def _on_transcript_chunk(payload: dict) -> None:
                             stage1_used = True
                     else:
                         # running supression prob again to increase randomness
-                        if should_suppress_fire():
+                        if random.random() < 0.55:
                             reaction = None
                         else:
                             reaction = await stage1_react(bot, text_chunk, flush_meta)
@@ -176,7 +178,6 @@ async def _on_transcript_chunk(payload: dict) -> None:
                 cooldown = bot.state.cooldownSeconds
                 prob = compute_reaction_probability(
                     bot.state.reactionProbability,
-                    int(flush_meta.get("stutter_count") or 0),
                     stance,
                 )
             except asyncio.TimeoutError:
@@ -195,7 +196,6 @@ async def _on_transcript_chunk(payload: dict) -> None:
                 }
             if reaction:
                 elapsed = asyncio.get_event_loop().time() - start
-                print(f"[bot] reaction ready room={room_id} bot={bot.id} in {elapsed:.2f}s")
                 now = time.monotonic()
                 should_react = True
                 try:

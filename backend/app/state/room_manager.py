@@ -84,17 +84,6 @@ class RoomManager:
         collected.reverse()
         return "".join(collected)
 
-    def get_transcript_window(self, room_id: str, seconds: int) -> str:
-        room = self.ensure_room(room_id)
-        if not room.transcript:
-            return ""
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=seconds)
-        chunks: list[str] = []
-        for ts, txt in room.transcript:
-            if ts >= cutoff:
-                chunks.append(txt)
-        return " ".join(chunks).strip()
-
     def get_service_bots_in_room(self, room_id: str) -> list[ServiceBot]:
         room = self.ensure_room(room_id)
         return list(room.bots.values())

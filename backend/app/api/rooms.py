@@ -11,7 +11,8 @@ from app.schemas.room import (
     Persona as SchemaPersona,
 )
 from app.events.bus import EventBus
-from app.services.bot_spawner import createBotFromPool, generatePersonaPool
+from app.services.bot_spawner import generatePersonaPool
+from app.services.bot import Bot as ServiceBot, BotPersona, BotState
 from app.services.reaction_config import CATEGORIES
 import random
 from app.services.coach import create_megaknight_coach
@@ -19,62 +20,30 @@ from app.services.coach import create_megaknight_coach
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 @router.post("", response_model=CreateRoomResponse, status_code=201)
-async def create_room(request: Request, body: CreateRoomRequest | None = None) -> CreateRoomResponse:
+async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomResponse:
     room_id = str(uuid.uuid4())
     coach = create_megaknight_coach()
     request.app.state.room_manager.add_coach_to_room(room_id, coach)
-    # category if provided
-    category = None
-    try:
-        category = body.category if body is not None else None
-    except Exception:
-        category = None
+    # set category and name immediately (mandatory)
+    category = body.category
     request.app.state.room_manager.set_category(room_id, category)
     bots_api: list[SchemaBot] = []
 
-    # Create bots concurrently; reuse persona generation here rather than inside add_bot
-    num_bots = 18
+    # Create bots using a single AI-generated persona pool
+    num_bots = 10
     try:
-        topic = None
-        try:
-            topic = (body.topic or "").strip() if body is not None else None
-        except Exception:
-            topic = None
-        persona_tasks = [generatePersonaPool(topic=topic or (category or "Public Speaking")) for _ in range(num_bots)]
-        personas = await asyncio.gather(*persona_tasks, return_exceptions=True)
+        topic = body.topic.strip()
+        personas = await generatePersonaPool(topic=topic, count=num_bots)
+        print(f"[rooms] persona pool fetched count={len(personas)} topic='{topic}'")
 
-        # Prepare diversity helpers
-        stance_cycle = ["supportive", "skeptical", "curious"]
-        domain_bias = CATEGORIES.get(category or "", {}).get("domain_bias", {"tech": 0.5, "design": 0.25, "finance": 0.25})
-        domains = list(domain_bias.keys())
-        weights = [float(domain_bias[d]) for d in domains]
-        total_w = sum(weights) or 1.0
-        weights = [w / total_w for w in weights]
-
-        idx = 0
         for p in personas:
-            if isinstance(p, Exception) or not isinstance(p, dict):
+            if not isinstance(p, dict):
                 continue
-            # Enforce stance/domain diversity
-            mod = dict(p)
             try:
-                mod["stance"] = stance_cycle[idx % len(stance_cycle)]
+                persona_model = BotPersona(**p)
+                new_bot_instance = ServiceBot(personality=persona_model, state=BotState())
             except Exception:
-                mod["stance"] = p.get("stance", "supportive")
-            try:
-                r = random.random()
-                acc = 0.0
-                chosen = domains[0]
-                for d, w in zip(domains, weights):
-                    acc += w
-                    if r <= acc:
-                        chosen = d
-                        break
-                mod["domain"] = chosen
-            except Exception:
-                mod["domain"] = p.get("domain", "tech")
-
-            new_bot_instance = createBotFromPool(mod)
+                new_bot_instance = None
             if not new_bot_instance:
                 continue
             request.app.state.room_manager.add_bot_to_room(room_id, new_bot_instance)
@@ -91,6 +60,7 @@ async def create_room(request: Request, body: CreateRoomRequest | None = None) -
                 persona=SchemaPersona(
                     stance=new_bot_instance.personality.stance,
                     domain=new_bot_instance.personality.domain,
+                    description=new_bot_instance.personality.description,
                 ),
             )
             bots_api.append(bot_for_api)
@@ -100,24 +70,21 @@ async def create_room(request: Request, body: CreateRoomRequest | None = None) -
             except Exception:
                 pass
             # Log and notify via event bus
-            print(f"[rooms] bot joined room={room_id} id={bot_for_api.id} name={bot_for_api.name}")
+            print(f"[rooms] bot joined room={room_id} bot={bot_for_api.model_dump()}")
             await request.app.state.event_bus.publish("bot:join", {  # type: ignore[attr-defined]
                 "roomId": room_id,
                 "bot": bot_for_api.model_dump(),
             })
-            idx += 1
     except Exception as e:
         print(f"[rooms] bot creation error for room={room_id}: {e}")
 
     return CreateRoomResponse(
         id=room_id,
         createdAt=datetime.now(timezone.utc),
+        updatedAt=datetime.now(timezone.utc),
         bots=bots_api,
         category=category,
-        updatedAt=datetime.now(timezone.utc),
     )
-
-# Removed: /rooms/{roomId}/state — initial state is now returned by POST /rooms
 
 def get_bus(request: Request) -> EventBus:
     return request.app.state.event_bus
@@ -128,8 +95,15 @@ async def add_bot(
     request: Request,
     bus: EventBus = Depends(get_bus),
 ) -> SchemaBot:
-    persona_pool = await generatePersonaPool(topic="AI Presentations")
-    new_bot_instance = createBotFromPool(persona_pool)
+    personas = await generatePersonaPool(topic="AI Presentations", count=1)
+    persona_obj = personas[0] if personas else None
+    if not isinstance(persona_obj, dict):
+        raise HTTPException(status_code=500, detail="Failed to create a new bot.")
+    try:
+        persona_model = BotPersona(**persona_obj)
+        new_bot_instance = ServiceBot(personality=persona_model, state=BotState())
+    except Exception:
+        new_bot_instance = None
 
     if not new_bot_instance:
         raise HTTPException(status_code=500, detail="Failed to create a new bot.")
@@ -143,6 +117,7 @@ async def add_bot(
         persona=SchemaPersona(
             stance=new_bot_instance.personality.stance,
             domain=new_bot_instance.personality.domain,
+            description=new_bot_instance.personality.description,
         )
     )
     
