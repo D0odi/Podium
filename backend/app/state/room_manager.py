@@ -37,12 +37,12 @@ class RoomManager:
         room = self.ensure_room(room_id)
         return room.category
 
-    def set_duration(self, room_id: str, duration_seconds: Optional[int]) -> None:
+    def set_duration_seconds(self, room_id: str, duration_seconds: Optional[int]) -> None:
         room = self.ensure_room(room_id)
         room.duration_seconds = duration_seconds
         room.updated_at = datetime.now(timezone.utc)
 
-    def get_duration(self, room_id: str) -> Optional[int]:
+    def get_duration_seconds(self, room_id: str) -> Optional[int]:
         room = self.ensure_room(room_id)
         return room.duration_seconds
 
