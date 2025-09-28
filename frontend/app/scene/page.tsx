@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { AudioRecorderWithVisualizer } from "@/components/voice";
@@ -41,7 +40,7 @@ export default function ScenePage() {
   useEffect(() => {
     const id = wsClient.getRoomId();
     if (!id || !wsClient.isConnected()) {
-      router.replace("/staging");
+      router.replace("/");
       return;
     }
     setRoomId(id);
