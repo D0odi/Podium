@@ -29,6 +29,8 @@ function computeFillerStats(transcriptText: string) {
 
 import { ChartRadialShape } from "@/components/chart-radial-shape";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Spotlight } from "@/components/ui/spotlight-new";
+import { CoachMessage } from "@/components/coach-message";
 
 export default function ReportPage() {
   // TODO: Replace placeholder with real transcript JSON from backend
@@ -39,17 +41,20 @@ export default function ReportPage() {
 
   const filler = computeFillerStats(sampleTranscript.text);
   return (
-    <main className="min-h-screen p-8 space-y-8">
-      {/* Header */}
-      <section>
-        <h1 className="text-3xl font-bold tracking-tight">Let's talk about how you did</h1>
-        <p className="text-sm text-muted-foreground mt-2">
-          A quick snapshot of your delivery across key speaking metrics.
-        </p>
-      </section>
-
-      {/* Metrics Section */}
-      <section className="grid gap-6 md:grid-cols-3">
+    <main className="relative min-h-screen overflow-x-hidden">
+      <div className="min-h-dvh w-full rounded-md bg-black/[0.96] pb-16 antialiased bg-grid-white/[0.02] relative overflow-hidden">
+        <Spotlight />
+        <div className="p-4 max-w-7xl mx-auto relative z-10 w-full">
+          <div className="space-y-8 p-4 md:p-8">
+            {/* Header */}
+            <section>
+              <h1 className="text-3xl font-bold tracking-tight">Let's talk about how you did</h1>
+              <p className="text-sm text-muted-foreground mt-2">
+                A quick snapshot of your delivery across key speaking metrics.
+              </p>
+            </section>
+            {/* Metrics Section */}
+            <section className="grid gap-6 md:grid-cols-3">
         {/* Filler Words */}
         <Card>
           <CardHeader className="pb-0">
@@ -111,7 +116,32 @@ export default function ReportPage() {
             <p className="text-xs text-muted-foreground mt-3">Target 130–170 WPM for a natural pace.</p>
           </CardContent>
         </Card>
-      </section>
+            </section>
+            {/* Coach Feedback */}
+            <section>
+              <Card className="bg-transparent border-none shadow-none">
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">Coach Feedback</CardTitle>
+                  <CardDescription>AI coach summary and suggestions</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <CoachMessage
+                    // TODO: Replace placeholder with backend-generated paragraphs
+                    paragraphs={[
+                      "Great job maintaining a confident tone and clear structure throughout your talk.",
+                      "Try to reduce filler words and add a brief pause before key points to give them more impact.",
+                      "Consider closing with a concise call-to-action to strengthen your ending.",
+                    ]}
+                    avatarSrc="/avatars/olga-noback.jpeg" // Place your image at frontend/public/avatars/coach.jpg
+                    name="Coach"
+                    typingDelayMs={1200}
+                  />
+                </CardContent>
+              </Card>
+            </section>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }
