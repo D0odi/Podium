@@ -5,9 +5,10 @@ from typing import List, Tuple, Literal
 from pydantic import BaseModel, Field
 from openai import OpenAI, APIError
 from openai.types.chat import ChatCompletionMessageParam
+import os
 
 # OpenRouter configuration (inline constants per user request)
-OPENROUTER_API_KEY = "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"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 class BotPersona(BaseModel):

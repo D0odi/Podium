@@ -1,37 +1,12 @@
+from openai import OpenAI
 import os
 import json
-import requests
-from openai import OpenAI
-from dotenv import load_dotenv
 
-load_dotenv()
 
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-
-def analyze_text(transcribed_text):
-    if not DEEPGRAM_API_KEY:
-        print("DEEPGRAM_API_KEY not set")
-        return {}
-
-    custom_topic = "Millionaires"
-    params_url = str(f"https://api.deepgram.com/v1/read?custom_topic={custom_topic}&intents=true&language=en&sentiment=true&summarize=true&topics=true&custom_topic_mode=extended")
-
-    response = requests.post(
-        params_url,
-        headers={"Authorization": f"Token {DEEPGRAM_API_KEY}"},
-        json={"text": transcribed_text},
-    )
-    return response.json()
-
-def get_coach_feedback(transcript: str):
-    if not OPENROUTER_API_KEY:
-        print("OPENROUTER_API_KEY not set")
-        return {}
-
+def coach_result(OPENAI_API_KEY, transcript, deep_analysis, stutters, wpm, speech_duration, filler_words):
     client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENAI_API_KEY,
     )
 
     systemPrompt = """
@@ -40,8 +15,6 @@ def get_coach_feedback(transcript: str):
         You will always respond in a structured JSON format.
         Consider the fact that sometimes the user stutters so some words may appear twice in a row in the transcript
         """
-
-    deep_analysis = analyze_text(transcript)
 
     userPrompt = f"""
         Analyze the following speech transcript and its corresponding fluency analysis. Based on this data, provide feedback.
@@ -52,11 +25,14 @@ def get_coach_feedback(transcript: str):
         **Deep analysis**
         {deep_analysis}
 
+        **Fluency Analysis:**
+        - Percentage of long pauses: {stutters}%
+
         **Your Task:**
         Return a single JSON object with two main keys: "upsides" and "shortcomings".
         - The "upsides" object must contain exactly three distinct strengths of the speech.
         - The "shortcomings" object must contain exactly three distinct, actionable areas for improvement.
-        - Base your feedback on both the transcript content and deep analysis.
+        - Base your feedback on both the transcript content, deep analysis, and the fluency analysis data.
         - Keep the feedback concise, professional, and encouraging.
         - The root of the JSON should have keys: "wpm", "speechDuration", "fillerWords", "upsides", and "shortcomings".
         - Base your feedback on all provided data.
@@ -64,9 +40,9 @@ def get_coach_feedback(transcript: str):
         **Required JSON Format:**
         ```json
         {{
-        "wpm": 0,
-        "speechDuration": 0,
-        "fillerWords": 0,
+        "wpm": {wpm},
+        "speechDuration": {speech_duration:.2f},
+        "fillerWords": {filler_words},
         "upsides": {{
             "strengthOne": "Description of the first strength.",
             "strengthTwo": "Description of the second strength.",
@@ -81,13 +57,15 @@ def get_coach_feedback(transcript: str):
         ```
         """
 
+
+
     completion = client.chat.completions.create(
-        model="openai/gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": systemPrompt},
-            {"role": "user", "content": userPrompt},
-        ],
-        response_format={"type": "json_object"},
+    model="openai/gpt-4o-mini",
+    messages=[
+        {"role": "system", "content": systemPrompt},
+        {"role": "user", "content": userPrompt},
+    ],
+    response_format={"type": "json_object"},
     )
 
     rawResponse = completion.choices[0].message.content

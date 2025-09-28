@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Deque, Tuple, Optional
 
 from app.services.bot import Bot as ServiceBot
-from app.services.coach import MegaKnight
 from app.schemas.room import Bot as SchemaBot, Persona as SchemaPersona
 
 @dataclass
@@ -14,7 +13,6 @@ class Room:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     bots: Dict[str, ServiceBot] = field(default_factory=dict)
-    coach: Optional[MegaKnight] = None
     transcript: Deque[Tuple[datetime, str]] = field(default_factory=lambda: deque(maxlen=1000))
     category: Optional[str] = None
 
@@ -37,14 +35,6 @@ class RoomManager:
     def get_category(self, room_id: str) -> Optional[str]:
         room = self.ensure_room(room_id)
         return room.category
-
-    def add_coach_to_room(self, room_id: str, coach: MegaKnight):
-        room = self.ensure_room(room_id)
-        room.coach = coach
-
-    def get_coach_in_room(self, room_id: str) -> Optional[MegaKnight]:
-        room = self.ensure_room(room_id)
-        return room.coach
 
     def add_bot_to_room(self, room_id: str, bot: ServiceBot) -> None:
         room = self.ensure_room(room_id)
