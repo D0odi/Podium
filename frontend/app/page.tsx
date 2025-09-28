@@ -179,7 +179,7 @@ export default function Home() {
                   <br /> Make it unforgettable.
                 </span>
               </h1>
-              <p className="mt-4 font-normal text-base text-neutral-300 max-w-lg text-left">
+              <p className="mt-3 font-normal text-base tracking-wider text-neutral-300 max-w-lg text-left">
                 Seed your audience, pick a length, and start your scene.
               </p>
               <div className="mt-8 flex justify-start">
