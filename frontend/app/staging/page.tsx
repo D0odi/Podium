@@ -5,10 +5,11 @@ import {
   FormControl,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 // removed slider
+import { Slider } from "@/components/ui/slider";
 import { Spotlight } from "@/components/ui/spotlight-new";
 import WalkingAudience from "@/components/walkers";
 import { wsClient } from "@/lib/wsClient";
@@ -16,7 +17,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Slider } from "@/components/ui/slider";
 const CATEGORIES = ["technical_pitch", "design_review", "fundraising"] as const;
 const CATEGORY_LABELS: Record<(typeof CATEGORIES)[number], string> = {
   technical_pitch: "Technical Pitch",
@@ -34,11 +34,15 @@ export default function QuestionnairePage() {
     []
   );
 
-  const form = useForm<{ category: string; topic: string; durationSeconds: number }>({
+  const form = useForm<{
+    category: string;
+    topic: string;
+    durationMinutes: number;
+  }>({
     defaultValues: {
       category: categories[0] ?? "General",
       topic: "",
-      durationSeconds: 180,
+      durationMinutes: 3,
     },
   });
 
@@ -52,7 +56,9 @@ export default function QuestionnairePage() {
         body: JSON.stringify({
           category: form.getValues().category,
           topic: form.getValues().topic,
-          durationSeconds: form.getValues().durationSeconds,
+          durationMinutes: form.getValues().durationMinutes,
+          durationSeconds:
+            Math.max(0, Number(form.getValues().durationMinutes || 0)) * 60,
         }),
       });
       if (!res.ok) throw new Error(`create room failed ${res.status}`);
@@ -148,13 +154,15 @@ export default function QuestionnairePage() {
                       </p>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-2">
                       <FormField
                         control={form.control}
                         name="category"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Category</FormLabel>
+                            <Label htmlFor="durationMinutes" className="py-1">
+                              Category
+                            </Label>
                             <FormControl>
                               <select
                                 className="w-full h-10 rounded-md border bg-background px-3 text-sm"
@@ -163,7 +171,9 @@ export default function QuestionnairePage() {
                               >
                                 {categories.map((c: string) => (
                                   <option key={c} value={c}>
-                                    {CATEGORY_LABELS[c as (typeof CATEGORIES)[number]] || c}
+                                    {CATEGORY_LABELS[
+                                      c as (typeof CATEGORIES)[number]
+                                    ] || c}
                                   </option>
                                 ))}
                               </select>
@@ -175,48 +185,12 @@ export default function QuestionnairePage() {
 
                       <FormField
                         control={form.control}
-                        name="durationSeconds"
-                        render={({ field }) => {
-                          const total = Number(field.value ?? 0);
-                          const minutes = Math.floor(total / 60);
-                          const seconds = total % 60;
-                          const label = `${minutes}:${seconds.toString().padStart(2, "0")}`;
-                          return (
-                            <FormItem>
-                              <FormLabel>Length</FormLabel>
-                              <FormControl>
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-center text-sm">
-                                    <span className="font-medium">{label}</span>
-                                  </div>
-                                  <Slider
-                                    min={0}
-                                    max={600}
-                                    step={5}
-                                    value={[total]}
-                                    onValueChange={(vals) => field.onChange(vals[0] ?? 0)}
-                                    aria-label="Presentation length in seconds"
-                                  />
-                                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                    <span>0:00</span>
-                                    <span>10:00</span>
-                                  </div>
-                                </div>
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          );
-                        }}
-                      />
-
-                      <FormField
-                        control={form.control}
                         name="topic"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>
-                              Topic (what&apos;s your talk about?)
-                            </FormLabel>
+                            <Label htmlFor="durationMinutes" className="py-1">
+                              Topic
+                            </Label>
                             <FormControl>
                               <textarea
                                 className="w-full min-h-24 rounded-md border bg-background px-3 py-2 text-sm"
@@ -228,6 +202,45 @@ export default function QuestionnairePage() {
                             <FormMessage />
                           </FormItem>
                         )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="durationMinutes"
+                        render={({ field }) => {
+                          const minutes = Number(field.value ?? 0);
+                          const label = `${minutes.toString()}`;
+                          return (
+                            <FormItem>
+                              <FormControl>
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <Label
+                                      htmlFor="durationMinutes"
+                                      className="py-1"
+                                    >
+                                      Minutes
+                                    </Label>
+                                    <span className="text-sm text-muted-foreground">
+                                      {label}
+                                    </span>
+                                  </div>
+                                  <Slider
+                                    id="durationMinutes"
+                                    value={[minutes]}
+                                    onValueChange={(vals) =>
+                                      field.onChange(vals[0])
+                                    }
+                                    min={0}
+                                    max={15}
+                                    step={1}
+                                  />
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          );
+                        }}
                       />
                     </div>
 

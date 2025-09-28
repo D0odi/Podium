@@ -1,7 +1,7 @@
 "use client";
 
 import type { Bot } from "@/lib/types";
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type WalkingAudienceProps = {
@@ -38,10 +38,8 @@ function chunkIntoRows<T>(items: T[], capacities: number[]): T[][] {
 }
 
 // --- Seating layout tuning constants ---
-// Horizontal padding inside the stage container (px)
-const STAGE_MARGIN_X = 100;
-// Minimum distance from the top of the stage to the highest seats (px)
-const STAGE_MARGIN_TOP = 40;
+// Dynamic margins will be computed based on bot count; these constants are legacy defaults
+// and are no longer referenced directly in seat calculations.
 // Distance from the bottom of the stage to the seating baseline (px)
 const STAGE_MARGIN_BOTTOM = 0;
 // Controls how wide the bell curve is. Higher => wider and flatter
@@ -51,8 +49,8 @@ const EDGE_LIFT_FACTOR = 0.08;
 // Stable per-bot random jitter half-ranges (final jitter is ±half-range)
 const JITTER_X_HALF_RANGE_PX = 10; // horizontal ±4px
 const JITTER_Y_HALF_RANGE_PX = 6; // vertical ±6px
-// Downward offset for entrance animation (px)
-const ENTER_OFFSET_PX = 60;
+// Downward offset for entrance animation (px) - deprecated
+// const ENTER_OFFSET_PX = 60;
 // Max scale used in SeatedBot animation; used for safe clamping (not used in current clamp)
 // const BOT_MAX_SCALE = 1.03;
 // Toggle to show debug overlay and console output for seat layout
@@ -64,6 +62,25 @@ const ROW_CAPACITIES_DEFAULT = [10, 5, 3];
 const ROW_GAP_Y_PX = 150; // vertical distance between rows
 // Each deeper row increases side margins by this many pixels (squeezes the curve)
 const ROW_X_MARGIN_INCREMENT = 250;
+
+// Compute dynamic margins based on the number of bots on stage.
+// For 4–5 bots: marginX=400, marginTop=200
+// For 15+ bots: marginX=100, marginTop=40
+// Linearly interpolate between these ranges for counts in (5, 15).
+function marginsForBots(count: number): { marginX: number; marginTop: number } {
+  const floorCount = 4; // up to this, use max margins
+  const ceilCount = 15; // at/above this, use min margins
+  const maxX = 600;
+  const maxTop = 250;
+  const minX = 100;
+  const minTop = 40;
+  if (count <= floorCount) return { marginX: maxX, marginTop: maxTop };
+  if (count >= ceilCount) return { marginX: minX, marginTop: minTop };
+  const t = (count - floorCount) / (ceilCount - floorCount);
+  const marginX = Math.round(maxX + t * (minX - maxX));
+  const marginTop = Math.round(maxTop + t * (minTop - maxTop));
+  return { marginX, marginTop };
+}
 
 // Deterministic hash -> [0,1) for stable per-bot jitter
 function hashToUnit(input: string): number {
@@ -89,8 +106,6 @@ function Walker({
   slow: boolean;
   directionRight: boolean;
 }) {
-  const prefersReduced = useReducedMotion();
-
   function generateReaction(): { emoji: string; phrase: string } {
     const emojis = ["🙂", "👍", "🤔", "👏", "😮", "😊"];
     const phrases = ["Nice", "Interesting", "Good", "Hmm", "Cool", "Great"];
@@ -119,13 +134,12 @@ function Walker({
   }, [phrase]);
 
   useEffect(() => {
-    if (prefersReduced) return;
     let cancelled = false;
     let hideTimer: number | undefined;
     let showTimer: number | undefined;
 
     const schedule = () => {
-      const delay = 6000 + Math.random() * 8000; // less frequent
+      const delay = 12000 + Math.random() * 12000; // increased spawn interval (12–24s)
       showTimer = window.setTimeout(() => {
         if (cancelled) return;
         const r = generateReaction();
@@ -156,15 +170,7 @@ function Walker({
       if (showTimer) window.clearTimeout(showTimer);
       if (hideTimer) window.clearTimeout(hideTimer);
     };
-  }, [prefersReduced]);
-
-  if (prefersReduced) {
-    return (
-      <div className="absolute bottom-2">
-        <span className="text-2xl md:text-3xl select-none">{bot.avatar}</span>
-      </div>
-    );
-  }
+  }, []);
 
   return (
     <motion.div
@@ -239,6 +245,33 @@ export default function WalkingAudience({
   const [width, setWidth] = useState(0);
   const slow = true;
 
+  // Fallback sample bots if none provided (for staging/landing views)
+  const fallbackBots = useMemo<Bot[]>(() => {
+    const pool = [
+      "😀",
+      "😎",
+      "🤓",
+      "🙂",
+      "😉",
+      "🥳",
+      "🤔",
+      "😮",
+      "🧐",
+      "😊",
+      "🙃",
+      "😌",
+    ];
+    const count = 8;
+    return Array.from({ length: count }).map((_, i) => ({
+      id: `fallback-${i}`,
+      name: `Guest ${i + 1}`,
+      avatar: pool[(i * 3) % pool.length],
+      persona: { stance: "supportive", domain: "tech", description: "" },
+    }));
+  }, []);
+
+  const displayBots = bots.length > 0 ? bots : fallbackBots;
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -259,12 +292,12 @@ export default function WalkingAudience({
   return (
     <div
       ref={containerRef}
-      className={` pointer-events-none fixed bottom-0 left-0 right-0 z-20 overflow-hidden ${
+      className={` pointer-events-none fixed bottom-0 left-0 right-0 z-20 overflow-hidden h-24 md:h-28 ${
         className ?? ""
       }`}
     >
       <div className="relative h-full w-full">
-        {bots.map((b, index) => (
+        {displayBots.map((b, index) => (
           <Walker
             key={`${b.id}-${index}`}
             bot={b}
@@ -341,14 +374,17 @@ export function WalkableStage({
 
     const cx = w / 2;
     const baseYGlobal = h - STAGE_MARGIN_BOTTOM;
-    const amplitude = Math.max(0, baseYGlobal - STAGE_MARGIN_TOP);
-    const halfWidth = Math.max(1, w / 2 - STAGE_MARGIN_X);
+    const { marginX: stageMarginX, marginTop: stageMarginTop } = marginsForBots(
+      bots.length
+    );
+    const amplitude = Math.max(0, baseYGlobal - stageMarginTop);
+    const halfWidth = Math.max(1, w / 2 - stageMarginX);
     const sigma = halfWidth * BELL_SIGMA_SCALE;
     const edgeLift = amplitude * EDGE_LIFT_FACTOR;
 
     rows.forEach((rowBots, rowIndex) => {
       const yRowOffset = rowIndex * ROW_GAP_Y_PX; // positive pushes row downward
-      const rowMarginX = STAGE_MARGIN_X + rowIndex * ROW_X_MARGIN_INCREMENT;
+      const rowMarginX = stageMarginX + rowIndex * ROW_X_MARGIN_INCREMENT;
 
       const seatsForRow = rowBots.map((bot, i) => {
         const id = bot.id;
@@ -375,7 +411,7 @@ export function WalkableStage({
         const dy = botOffsets[id]?.dy ?? 0;
         const y = clamp(
           yWithEdge + yRowOffset + dy,
-          STAGE_MARGIN_TOP,
+          stageMarginTop,
           baseYGlobal
         );
         return { id, x, y };
@@ -399,6 +435,65 @@ export function WalkableStage({
     [rowSeats]
   );
 
+  // Deferred layout: keep previous seats during join/leave so the target bot animates first
+  const [seatAssignments, setSeatAssignments] = useState<
+    Record<string, { x: number; y: number }>
+  >({});
+  const [animPriorityId, setAnimPriorityId] = useState<string | null>(null);
+  const prevBotIdsRef = useRef<string[]>([]);
+  const layoutTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const currentIds = bots.map((b) => b.id);
+    const prevIds = prevBotIdsRef.current;
+    const added = currentIds.filter((id) => !prevIds.includes(id));
+    const removed = prevIds.filter((id) => !currentIds.includes(id));
+
+    // Build the full target layout map from computed seats
+    const fullMap: Record<string, { x: number; y: number }> = {};
+    bots.forEach((b, i) => {
+      const s = seats[i];
+      if (s) fullMap[b.id] = { x: s.x, y: s.y };
+    });
+
+    if (added.length > 0 || removed.length > 0) {
+      // Stage change: persist old positions for existing bots;
+      // assign seat for newly added bots immediately so they can animate in.
+      setAnimPriorityId(added[0] || removed[0] || null);
+      const measured: Record<string, { x: number; y: number }> = {};
+      botRects.forEach((r) => {
+        measured[r.id] = { x: r.x + r.w / 2, y: r.y };
+      });
+      setSeatAssignments((prev) => {
+        const next: Record<string, { x: number; y: number }> = {};
+        currentIds.forEach((id) => {
+          if (measured[id]) next[id] = measured[id];
+          else if (prev[id]) next[id] = prev[id];
+        });
+        added.forEach((id) => {
+          if (fullMap[id]) next[id] = fullMap[id];
+        });
+        return next;
+      });
+
+      if (layoutTimerRef.current) window.clearTimeout(layoutTimerRef.current);
+      layoutTimerRef.current = window.setTimeout(() => {
+        setSeatAssignments(fullMap);
+        setAnimPriorityId(null);
+        layoutTimerRef.current = null;
+      }, 700);
+    } else {
+      // No membership change (resize/measure): apply immediately
+      setSeatAssignments(fullMap);
+      setAnimPriorityId(null);
+    }
+
+    prevBotIdsRef.current = currentIds;
+    return () => {
+      if (layoutTimerRef.current) window.clearTimeout(layoutTimerRef.current);
+    };
+  }, [bots, seats, botRects]);
+
   if (!mounted) return null;
 
   return (
@@ -416,48 +511,61 @@ export function WalkableStage({
       >
         😀
       </span>
-      {bots.map((bot, index) => (
-        <SeatedBot
-          key={bot.id}
-          bot={bot}
-          seat={
-            seats[index] || { x: stageSize.width / 2, y: stageSize.height / 2 }
-          }
-          centerX={stageSize.width / 2}
-          delay={index * 0.25}
-          reactionText={reactionsByBotId?.[bot.id]}
-          halfWidth={
-            (botRects.find((r) => r.id === bot.id)?.w ?? botHalfWidth * 2) / 2
-          }
-          onMeasured={(rect) => {
-            if (!rect) return;
-            setBotRects((prev) => {
-              const existing = prev.find((r) => r.id === bot.id);
-              const stageRect = stageRef.current?.getBoundingClientRect();
-              const nextRect = {
-                id: bot.id,
-                x: rect.left - (stageRect?.left ?? 0),
-                y: rect.top - (stageRect?.top ?? 0),
-                w: rect.width,
-                h: rect.height,
-              };
-              const epsilon = 0.5;
-              if (
-                existing &&
-                Math.abs(existing.x - nextRect.x) < epsilon &&
-                Math.abs(existing.y - nextRect.y) < epsilon &&
-                Math.abs(existing.w - nextRect.w) < epsilon &&
-                Math.abs(existing.h - nextRect.h) < epsilon
-              ) {
-                return prev;
+      <AnimatePresence initial={false}>
+        {bots
+          .slice()
+          .sort((a, b) =>
+            a.id === animPriorityId ? -1 : b.id === animPriorityId ? 1 : 0
+          )
+          .map((bot, index) => (
+            <SeatedBot
+              key={bot.id}
+              bot={bot}
+              seat={
+                seatAssignments[bot.id] ||
+                seats[index] || {
+                  x: stageSize.width / 2,
+                  y: stageSize.height / 2,
+                }
               }
-              const next = prev.filter((r) => r.id !== bot.id);
-              next.push(nextRect);
-              return next;
-            });
-          }}
-        />
-      ))}
+              delay={0}
+              reactionText={reactionsByBotId?.[bot.id]}
+              halfWidth={
+                (botRects.find((r) => r.id === bot.id)?.w ?? botHalfWidth * 2) /
+                2
+              }
+              stageWidth={stageSize.width}
+              stageHeight={stageSize.height}
+              onMeasured={(rect) => {
+                if (!rect) return;
+                setBotRects((prev) => {
+                  const existing = prev.find((r) => r.id === bot.id);
+                  const stageRect = stageRef.current?.getBoundingClientRect();
+                  const nextRect = {
+                    id: bot.id,
+                    x: rect.left - (stageRect?.left ?? 0),
+                    y: rect.top - (stageRect?.top ?? 0),
+                    w: rect.width,
+                    h: rect.height,
+                  };
+                  const epsilon = 0.5;
+                  if (
+                    existing &&
+                    Math.abs(existing.x - nextRect.x) < epsilon &&
+                    Math.abs(existing.y - nextRect.y) < epsilon &&
+                    Math.abs(existing.w - nextRect.w) < epsilon &&
+                    Math.abs(existing.h - nextRect.h) < epsilon
+                  ) {
+                    return prev;
+                  }
+                  const next = prev.filter((r) => r.id !== bot.id);
+                  next.push(nextRect);
+                  return next;
+                });
+              }}
+            />
+          ))}
+      </AnimatePresence>
 
       {DEBUG_SEAT_LAYOUT && botRects.length > 0 && (
         <div className="absolute left-2 top-2 z-10 text-xs bg-black/70 text-white rounded px-2 py-1 max-w-[80%] whitespace-pre overflow-auto">
@@ -492,9 +600,10 @@ export function WalkableStage({
               sorted[sorted.length - 1].x + sorted[sorted.length - 1].w;
             const overflowRight = rightMost - stageSize.width;
             const leftMost = sorted[0].x;
+            const { marginX: dbgMarginX } = marginsForBots(bots.length);
             const overflowLeft = Math.max(
               0,
-              STAGE_MARGIN_X + botHalfWidth - leftMost
+              dbgMarginX + botHalfWidth - leftMost
             );
             const widths = sorted.map((r) => r.w.toFixed(1)).join(", ");
             const heights = sorted.map((r) => r.h.toFixed(1)).join(", ");
@@ -544,11 +653,11 @@ export function WalkableStage({
               )} overR=${overflowRight.toFixed(2)} overL=${overflowLeft.toFixed(
                 2
               )}`,
-              `innerLeft=${(STAGE_MARGIN_X + botHalfWidth).toFixed(
+              `innerLeft=${(dbgMarginX + botHalfWidth).toFixed(
                 2
               )} innerRight=${(
                 stageSize.width -
-                STAGE_MARGIN_X -
+                dbgMarginX -
                 botHalfWidth
               ).toFixed(2)}`,
               `gaps=[${gaps.map((g) => g.toFixed(2)).join(", ")}]`,
@@ -568,19 +677,21 @@ export function WalkableStage({
 function SeatedBot({
   bot,
   seat,
-  centerX,
   delay,
   reactionText,
   halfWidth,
   onMeasured,
+  stageWidth,
+  stageHeight,
 }: {
   bot: Bot;
   seat: { x: number; y: number };
-  centerX: number;
   delay: number;
   reactionText?: string;
   halfWidth?: number;
   onMeasured?: (rect: DOMRect | null) => void;
+  stageWidth?: number;
+  stageHeight?: number;
 }) {
   const prefersReduced = useReducedMotion();
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -626,11 +737,18 @@ function SeatedBot({
       ref={nodeRef}
       className="absolute will-change-transform"
       initial={{
-        x: centerX - (halfWidth ?? 0),
-        y: seat.y + ENTER_OFFSET_PX,
+        // spawn near top-left outside view
+        x: -Math.max(40, (halfWidth ?? 0) * 2),
+        y: -60,
         opacity: 0,
       }}
       animate={{ x: seat.x - (halfWidth ?? 0), y: seat.y, opacity: 1 }}
+      exit={{
+        // leave toward bottom-right beyond bounds
+        x: (stageWidth ?? 0) + Math.max(80, (halfWidth ?? 0) * 2),
+        y: (stageHeight ?? 0) + 80,
+        opacity: 0,
+      }}
       transition={{ type: "spring", stiffness: 240, damping: 22, delay }}
       style={{ x: 0, y: 0, left: 0, top: 0, transformOrigin: "center" }}
       aria-label={bot.name}

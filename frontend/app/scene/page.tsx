@@ -34,6 +34,8 @@ export default function ScenePage() {
     () => process.env.NEXT_PUBLIC_BACKEND_URL as string,
     []
   );
+  const [removing, setRemoving] = useState<boolean>(false);
+  const [adding, setAdding] = useState<boolean>(false);
 
   // Guard: require active WS connection (roomId) else send back to staging
   useEffect(() => {
@@ -174,6 +176,76 @@ export default function ScenePage() {
   // Initial state fetched in ws.onopen above
   // reactions handled inside walkers speech bubbles; grid logic removed
 
+  async function handleRemoveOneBot(): Promise<void> {
+    if (removing) return;
+    if (!roomId || !apiBase) return;
+    if (!serverBots.length) return;
+    const target = serverBots[serverBots.length - 1];
+    try {
+      setRemoving(true);
+      setLogs((prev) =>
+        [`[api] deleting bot ${target.id}`, ...prev].slice(0, 200)
+      );
+      const res = await fetch(`${apiBase}/rooms/${roomId}/bots/${target.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok && res.status !== 204) {
+        setLogs((prev) =>
+          [
+            `[api] delete failed ${res.status} ${res.statusText}`,
+            ...prev,
+          ].slice(0, 200)
+        );
+      } else {
+        // Rely on ws "leave" event to update UI
+        setLogs((prev) =>
+          [`[api] delete issued for ${target.id}`, ...prev].slice(0, 200)
+        );
+      }
+    } catch (e) {
+      setLogs((prev) =>
+        [`[api] delete error ${(e as Error)?.message || e}`, ...prev].slice(
+          0,
+          200
+        )
+      );
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  async function handleAddOneBot(): Promise<void> {
+    if (adding) return;
+    if (!roomId || !apiBase) return;
+    try {
+      setAdding(true);
+      setLogs((prev) => [`[api] adding bot`, ...prev].slice(0, 200));
+      const res = await fetch(`${apiBase}/rooms/${roomId}/bots`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        setLogs((prev) =>
+          [`[api] add failed ${res.status} ${res.statusText}`, ...prev].slice(
+            0,
+            200
+          )
+        );
+      } else {
+        const bot = await res.json();
+        setLogs((prev) =>
+          [`[api] add issued id=${bot?.id || "?"}`, ...prev].slice(0, 200)
+        );
+        // The ws "join" event will add it to stage; no local mutation needed
+      }
+    } catch (e) {
+      setLogs((prev) =>
+        [`[api] add error ${(e as Error)?.message || e}`, ...prev].slice(0, 200)
+      );
+    } finally {
+      setAdding(false);
+    }
+  }
+
   return (
     <div className="h-full min-h-0 overflow-hidden flex flex-1 flex-col gap-4 p-5">
       {/* Walkable stage (center) */}
@@ -185,6 +257,26 @@ export default function ScenePage() {
         >
           {showStage ? "Show Logs" : "Show Stage"}
         </button>
+
+        {showStage ? (
+          <button
+            className="absolute top-2 left-2 z-50 inline-flex items-center justify-center rounded-md border bg-card text-card-foreground px-3 py-1 text-xs hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+            onClick={handleRemoveOneBot}
+            disabled={!serverBots.length || removing}
+          >
+            {removing ? "Removing..." : "Remove bot"}
+          </button>
+        ) : null}
+
+        {showStage ? (
+          <button
+            className="absolute top-2 left-32 z-50 inline-flex items-center justify-center rounded-md border bg-card text-card-foreground px-3 py-1 text-xs hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+            onClick={handleAddOneBot}
+            disabled={adding}
+          >
+            {adding ? "Adding..." : "Add bot"}
+          </button>
+        ) : null}
 
         {showStage ? (
           <WalkableStage

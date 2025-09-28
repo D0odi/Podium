@@ -326,20 +326,42 @@ export const AudioRecorderWithVisualizer = ({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.25 }}
             >
-              <div className="flex items-center gap-3">
+              <div className="relative flex items-center gap-3 z-10">
+                {/* Olga image behind Final report button when not recording and not idle */}
+                <motion.div
+                  className="absolute -right-13 top-1 rotate-[45deg] pointer-events-none select-none -z-10"
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{
+                    opacity: !isRecording && uiPhase !== "idle" ? 1 : 0,
+                    scale: !isRecording && uiPhase !== "idle" ? 1 : 0.96,
+                  }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                >
+                  <Image
+                    src="/avatars/olga-noback.jpeg"
+                    alt="Olga"
+                    className="opacity-70"
+                    width={90}
+                    height={90}
+                  />
+                </motion.div>
                 {uiPhase !== "idle" ? (
                   <motion.button
                     layout
                     onClick={() => {}}
-                    className="inline-flex min-h-[6rem] px-6 min-w-24 items-center justify-center rounded-lg border text-card-foreground shadow-lg hover:bg-accent hover:text-accent-foreground"
+                    className="inline-flex min-h-[6rem] min-w-24 px-7 items-center justify-center rounded-xl border-2 border-foreground/20 text-card-foreground shadow-xl ring-1 ring-black/5 hover:shadow-xl transition-transform duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}
                     initial={{ scale: 1 }}
                     animate={{ scale: 1 }}
-                    whileHover={{ scale: 1.01 }}
-                    transition={{ type: "spring", stiffness: 280, damping: 28 }}
+                    whileHover={{ scale: 1.05 }}
+                    transition={{
+                      type: "tween",
+                      duration: 0.15,
+                      ease: "easeOut",
+                    }}
                     title="Q&A"
                   >
-                    <span className="text-xl tracking-wider font-medium">
+                    <span className="text-xl tracking-wider font-semibold">
                       Q&A
                     </span>
                   </motion.button>
@@ -351,17 +373,21 @@ export const AudioRecorderWithVisualizer = ({
                   onClick={() => {
                     if (uiPhase === "idle") startRecording();
                   }}
-                  className="inline-flex min-h-[6rem] min-w-28 px-6 items-center justify-center gap-3 rounded-lg border text-card-foreground shadow-lg hover:bg-accent hover:text-accent-foreground"
+                  className="inline-flex min-h-[6rem] min-w-28 px-7 items-center justify-center gap-2 rounded-xl border-2 border-foreground/20 text-card-foreground shadow-xl ring-1 ring-black/5 hover:shadow-xl transition-transform duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}
                   initial={{ scale: 1 }}
                   animate={{ scale: 1 }}
-                  whileHover={{ scale: 1.01 }}
-                  transition={{ type: "spring", stiffness: 280, damping: 28 }}
+                  whileHover={{ scale: 1.03 }}
+                  transition={{
+                    type: "tween",
+                    duration: 0.15,
+                    ease: "easeOut",
+                  }}
                 >
                   {uiPhase === "idle" ? (
                     <Mic size={28} />
                   ) : (
-                    <span className="text-xl tracking-wider font-medium">
+                    <span className="text-xl tracking-wider font-semibold">
                       Final report?
                     </span>
                   )}
@@ -456,9 +482,9 @@ export const AudioRecorderWithVisualizer = ({
                 style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}
                 title="Clear current audio and transcript"
                 initial={{ scale: 1 }}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                transition={{ type: "spring", stiffness: 280, damping: 28 }}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: "tween", duration: 0.15, ease: "easeOut" }}
               >
                 <ArrowRightToLine size={40} />
               </motion.button>

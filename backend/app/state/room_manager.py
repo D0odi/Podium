@@ -2,7 +2,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Deque, Tuple, Optional
+from typing import Dict, Deque, Tuple, Optional, List, Any
 
 from app.services.bot import Bot as ServiceBot
 from app.schemas.room import Bot as SchemaBot, Persona as SchemaPersona
@@ -16,6 +16,7 @@ class Room:
     transcript: Deque[Tuple[datetime, str]] = field(default_factory=lambda: deque(maxlen=1000))
     category: Optional[str] = None
     duration_seconds: Optional[int] = None
+    persona_pool: Optional[List[Dict[str, Any]]] = None
 
 class RoomManager:
     def __init__(self) -> None:
@@ -45,6 +46,27 @@ class RoomManager:
     def get_duration(self, room_id: str) -> Optional[int]:
         room = self.ensure_room(room_id)
         return room.duration_seconds
+
+    def set_persona_pool(self, room_id: str, pool: List[Dict[str, Any]]) -> None:
+        room = self.ensure_room(room_id)
+        room.persona_pool = list(pool) if isinstance(pool, list) else []
+        room.updated_at = datetime.now(timezone.utc)
+
+    def get_random_persona(self, room_id: str) -> Optional[Dict[str, Any]]:
+        """Return a random persona dict from the stored pool, if available.
+
+        Does not remove from pool to allow reuse; returns None if no pool.
+        """
+        room = self.ensure_room(room_id)
+        pool = room.persona_pool or []
+        if not pool:
+            return None
+        try:
+            import random as _random
+            return _random.choice(pool)
+        except Exception:
+            # Fallback to first element if random fails
+            return pool[0] if pool else None
 
     def add_bot_to_room(self, room_id: str, bot: ServiceBot) -> None:
         room = self.ensure_room(room_id)

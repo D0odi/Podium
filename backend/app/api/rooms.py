@@ -30,10 +30,16 @@ async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomRe
     bots_api: list[SchemaBot] = []
 
     # Create bots using a single AI-generated persona pool
-    num_bots = 1
+    num_bots = 15
     topic = body.topic.strip()
     personas = await generatePersonaPool(topic=topic, count=num_bots)
     print(f"[rooms] persona pool fetched count={len(personas)} topic='{topic}'")
+
+    # Persist the pool on the room for reuse when adding more bots later
+    try:
+        request.app.state.room_manager.set_persona_pool(room_id, personas)
+    except Exception:
+        pass
 
     for p in personas:
         if not isinstance(p, dict):
@@ -84,11 +90,9 @@ async def add_bot(
     request: Request,
     bus: EventBus = Depends(get_bus),
 ) -> SchemaBot:
-    personas = await generatePersonaPool(topic="AI Presentations", count=1)
-    if not personas or not isinstance(personas[0], dict):
-        raise HTTPException(status_code=500, detail="Failed to create a new bot.")
+    persona_dict = request.app.state.room_manager.get_random_persona(roomId)
 
-    persona_model = BotPersona(**personas[0])
+    persona_model = BotPersona(**persona_dict)
     avatar = random.choice(AVATAR_EMOJIS)
     new_bot_instance = ServiceBot(avatar=avatar, personality=persona_model, state=BotState())
 
