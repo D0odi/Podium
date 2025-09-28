@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
+import { Progress } from "@/components/ui/progress";
 import { SpeechStream } from "@/lib/speechStream";
 import { cn } from "@/lib/utils";
 import { transcriptWs } from "@/lib/wsClient";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
-import { ArrowRightToLine, Download, Mic, Trash } from "lucide-react";
+import { ActivityIcon, Download, Mic, Trash } from "lucide-react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
@@ -41,6 +43,7 @@ export const AudioRecorderWithVisualizer = ({
       console.log("[voice]", ...args);
     } catch {}
   };
+  const router = useRouter();
   // States
   const [isRecording, setIsRecording] = useState<boolean>(false);
   // const [, setIsRecordingFinished] = useState<boolean>(false);
@@ -91,6 +94,11 @@ export const AudioRecorderWithVisualizer = ({
   const [uiPhase, setUiPhase] = useState<"idle" | "recording" | "final">(
     "idle"
   );
+  // Loading simulation for finalize/upload
+  const [finalizeBusy, setFinalizeBusy] = useState<boolean>(false);
+  const [finalizeProgress, setFinalizeProgress] = useState<number>(0);
+  const [finalizeStatus, setFinalizeStatus] = useState<string>("");
+  const finalizeTimersRef = useRef<number[]>([]);
 
   async function ensureTranscriptWs() {
     if (!roomId) return;
@@ -301,7 +309,7 @@ export const AudioRecorderWithVisualizer = ({
       <LayoutGroup id="voice-cta-group">
         {/* Centered CTA visible when not in recording phase (idle/final) */}
         <AnimatePresence initial={false} mode="popLayout">
-          {uiPhase !== "recording" ? (
+          {uiPhase === "idle" ? (
             <motion.div
               className="absolute inset-0 z-10 flex items-center justify-center"
               initial={{ opacity: 0 }}
@@ -385,10 +393,10 @@ export const AudioRecorderWithVisualizer = ({
             </motion.div>
           </div>
 
-          {uiPhase === "recording" ? (
+          {uiPhase !== "idle" ? (
             <div className="row-span-2 relative flex items-stretch rounded-lg overflow-visible">
               <motion.div
-                className="absolute z-0 -right-13 top-1 rotate-[45deg] pointer-events-none select-none"
+                className="absolute z-0 right-3 -top-19 pointer-events-none select-none"
                 initial={{ opacity: 0, scale: 0.92 }}
                 animate={{
                   opacity: isOlgaVisible ? 1 : 0,
@@ -399,60 +407,138 @@ export const AudioRecorderWithVisualizer = ({
                 <Image
                   src="/avatars/olga-noback.jpeg"
                   alt="Olga"
-                  className="opacity-70"
                   width={90}
                   height={90}
                 />
               </motion.div>
-              <motion.button
-                layout
-                layoutId="big-cta"
-                onClick={() => {
-                  (async () => {
-                    try {
-                      // Disconnect live transcript WS
+              {uiPhase === "recording" ? (
+                <motion.button
+                  layout
+                  layoutId="big-cta"
+                  onClick={() => {
+                    (async () => {
                       try {
-                        transcriptWs.disconnect();
-                      } catch {}
-                      // Stop recording stream
-                      const wav = speechRef.current?.getCurrentAudioBlob();
-                      setIsRecording(false);
-                      setUiPhase("idle");
-                      setIsOlgaVisible(false);
-                      if (olgaTimeoutRef.current)
-                        clearTimeout(olgaTimeoutRef.current);
-                      try {
-                        speechRef.current?.stop();
-                      } catch {}
-                      // Upload WAV to backend feedback endpoint
-                      if (wav && apiBase && roomId) {
-                        const form = new FormData();
-                        form.append("audio", wav, `Audio_${Date.now()}.wav`);
-                        const res = await fetch(
-                          `${apiBase}/rooms/${roomId}/feedback`,
-                          {
-                            method: "POST",
-                            body: form,
-                          }
-                        );
-                        const json = await res.json().catch(() => ({}));
-                        console.log("/feedback response", res.status, json);
+                        // Begin simulated progress sequence (like staging)
+                        try {
+                          finalizeTimersRef.current.forEach((id) =>
+                            window.clearTimeout(id)
+                          );
+                          finalizeTimersRef.current = [];
+                        } catch {}
+                        setFinalizeBusy(true);
+                        setFinalizeProgress(5);
+                        setFinalizeStatus("Collecting audio buffers...");
+                        const t1: number = window.setTimeout(() => {
+                          setFinalizeProgress(18);
+                          setFinalizeStatus("Optimizing waveform...");
+                        }, 400);
+                        const t2: number = window.setTimeout(() => {
+                          setFinalizeProgress(36);
+                          setFinalizeStatus("Extracting transcript...");
+                        }, 1200);
+                        const t3: number = window.setTimeout(() => {
+                          setFinalizeProgress(54);
+                          setFinalizeStatus("Scoring delivery metrics...");
+                        }, 2800);
+                        const t4: number = window.setTimeout(() => {
+                          setFinalizeProgress(72);
+                          setFinalizeStatus(
+                            "Finding filler words and pauses..."
+                          );
+                        }, 4300);
+                        const t5: number = window.setTimeout(() => {
+                          setFinalizeProgress(86);
+                          setFinalizeStatus("Generating coach insights...");
+                        }, 6000);
+                        const t6: number = window.setTimeout(() => {
+                          setFinalizeProgress(94);
+                          setFinalizeStatus("Preparing report...");
+                        }, 7600);
+                        finalizeTimersRef.current.push(t1, t2, t3, t4, t5, t6);
+
+                        // Disconnect live transcript WS
+                        try {
+                          transcriptWs.disconnect();
+                        } catch {}
+                        // Stop recording stream
+                        const wav = speechRef.current?.getCurrentAudioBlob();
+                        setIsRecording(false);
+                        setUiPhase("final");
+                        setIsOlgaVisible(false);
+                        if (olgaTimeoutRef.current)
+                          clearTimeout(olgaTimeoutRef.current);
+                        try {
+                          speechRef.current?.stop();
+                        } catch {}
+                        // Upload WAV to backend feedback endpoint
+                        if (wav && apiBase && roomId) {
+                          const form = new FormData();
+                          form.append("audio", wav, `Audio_${Date.now()}.wav`);
+                          const res = await fetch(
+                            `${apiBase}/rooms/${roomId}/feedback`,
+                            {
+                              method: "POST",
+                              body: form,
+                            }
+                          );
+                          const json = await res.json().catch(() => ({}));
+                          console.log("/feedback response", res.status, json);
+                          try {
+                            if (json && json.feedback) {
+                              setFinalizeProgress(100);
+                              setFinalizeStatus("Finalizing...");
+                              try {
+                                finalizeTimersRef.current.forEach((id) =>
+                                  window.clearTimeout(id)
+                                );
+                                finalizeTimersRef.current = [];
+                              } catch {}
+                              sessionStorage.setItem(
+                                "podium_feedback",
+                                JSON.stringify(json.feedback)
+                              );
+                              router.push("/report");
+                            }
+                          } catch {}
+                        }
+                      } catch (e) {
+                        console.log("finalize error", e);
+                        try {
+                          finalizeTimersRef.current.forEach((id) =>
+                            window.clearTimeout(id)
+                          );
+                          finalizeTimersRef.current = [];
+                        } catch {}
+                        setFinalizeBusy(false);
+                        setFinalizeProgress(0);
+                        setFinalizeStatus("");
                       }
-                    } catch (e) {
-                      console.log("finalize error", e);
-                    }
-                  })();
-                }}
-                className="relative shadow-md shadow-black z-10 inline-flex h-full min-h-[6rem] w-28 items-center justify-center rounded-lg border  text-card-foreground hover:bg-accent hover:text-accent-foreground"
-                style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}
-                title="Clear current audio and transcript"
-                initial={{ scale: 1 }}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.95 }}
-                transition={{ type: "tween", duration: 0.15, ease: "easeOut" }}
-              >
-                <ArrowRightToLine size={40} />
-              </motion.button>
+                    })();
+                  }}
+                  className="relative shadow-md shadow-black z-10 inline-flex h-full min-h-[6rem] w-28 items-center justify-center rounded-lg border  text-card-foreground hover:bg-accent hover:text-accent-foreground"
+                  style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}
+                  initial={{ scale: 1 }}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{
+                    type: "tween",
+                    duration: 0.15,
+                    ease: "easeOut",
+                  }}
+                >
+                  <ActivityIcon className="text-destructive" size={40} />
+                </motion.button>
+              ) : null}
+              {finalizeBusy ? (
+                <div className="pointer-events-none fixed inset-0 z-40 flex items-end pb-10 justify-center">
+                  <div className="w-[40vw] min-w-[25vw] max-w-[720px] flex flex-col items-center justify-center">
+                    <Progress value={finalizeProgress} className="w-full h-2" />
+                    <p className="text-sm mt-2 text-muted-foreground text-center">
+                      {finalizeStatus}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div />

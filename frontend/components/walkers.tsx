@@ -2,7 +2,7 @@
 
 import type { Bot } from "@/lib/types";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 type WalkingAudienceProps = {
   bots?: Bot[];
@@ -236,7 +236,7 @@ function Walker({
   );
 }
 
-export default function WalkingAudience({
+function WalkingAudienceComponent({
   bots = [],
   className,
 }: WalkingAudienceProps) {
@@ -310,6 +310,8 @@ export default function WalkingAudience({
     </div>
   );
 }
+
+export default memo(WalkingAudienceComponent);
 
 // Walkable stage with autonomous random bots
 export function WalkableStage({

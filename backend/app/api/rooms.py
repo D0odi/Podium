@@ -89,45 +89,6 @@ async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomRe
 def get_bus(request: Request) -> EventBus:
     return request.app.state.event_bus
 
-@router.post("/{roomId}/bots", response_model=SchemaBot, status_code=201)
-async def add_bot(
-    roomId: str,
-    request: Request,
-    bus: EventBus = Depends(get_bus),
-) -> SchemaBot:
-    persona_dict = request.app.state.room_manager.get_random_persona(roomId)
-
-    persona_model = BotPersona(**persona_dict)
-    avatar = random.choice(AVATAR_EMOJIS)
-    new_bot_instance = ServiceBot(avatar=avatar, personality=persona_model, state=BotState())
-
-    request.app.state.room_manager.add_bot_to_room(roomId, new_bot_instance)
-
-    bot_for_api = SchemaBot(
-        id=new_bot_instance.id,
-        name=new_bot_instance.personality.name,
-        avatar=new_bot_instance.avatar,
-        persona=SchemaPersona(
-            stance=new_bot_instance.personality.stance,
-            domain=new_bot_instance.personality.domain,
-            description=new_bot_instance.personality.description,
-        )
-    )
-    
-    await bus.publish("bot:join", {"roomId": roomId, "bot": bot_for_api.model_dump()})
-    return bot_for_api
-
-@router.delete("/{roomId}/bots/{botId}", status_code=204)
-async def remove_bot(
-    roomId: str,
-    botId: str,
-    request: Request,
-    bus: EventBus = Depends(get_bus),
-) -> None:
-    request.app.state.room_manager.remove_bot_from_room(roomId, botId)
-    await bus.publish("bot:leave", {"roomId": roomId, "botId": botId})
-    return None
-
 @router.post("/{roomId}/feedback", status_code=202)
 async def get_final_feedback(
     roomId: str,

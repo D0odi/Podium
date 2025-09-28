@@ -168,7 +168,7 @@ async def _on_transcript_chunk(payload: dict) -> None:
                 else:
 
                     stage1_used = False
-                    if random.random() < 0.65:
+                    if random.random() < 0.5:
                         try:
                             # Include prior transcript tail to provide brief context
                             stage2_input = f"{tail_context}{text_chunk}"
@@ -300,7 +300,7 @@ async def _on_transcript_chunk(payload: dict) -> None:
         # Sequentially process bots with staggered delays to avoid bursts
         for idx, bot in enumerate(bots_in_room):
             print(f"[bot] start reaction room={room_id} bot={bot.id}")
-            start_delay = 0.10 + 0.20 * idx + random.uniform(0.05, 0.25)
+            start_delay = 0.10 + 0.10 * idx + random.uniform(0.05, 0.25)
             leave_delay = 0.05 + 0.10 * idx + random.uniform(0.05, 0.20)
             await one_bot_react(bot, start_delay, leave_delay)
 

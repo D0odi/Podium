@@ -1,252 +1,200 @@
-type TranscriptPlaceholder = {
-  // TODO: Replace with actual backend transcript payload shape
-  // e.g., { segments: Array<{ text: string; startSec: number; endSec: number }>, goalMinutes?: number }
-  text: string;
+"use client";
+type Feedback = {
+  fillerWords: {
+    totalWords: number;
+    fillerCount: number;
+    fillerPercent: number;
+  };
+  durationVsGoal: {
+    actualSeconds: number;
+    goalSeconds: number;
+    deviationSeconds: number;
+    actualFormatted: string;
+    goalFormatted: string;
+  };
+  speechRate: {
+    avgWpm: number;
+    minWpm: number;
+    maxWpm: number;
+    optimalRange: { min: number; max: number };
+    status: string;
+  };
+  upsides: string[];
+  shortcomings: string[];
+  topics: string[];
 };
+//
 
-function computeFillerStats(transcriptText: string) {
-  const normalized = transcriptText.toLowerCase();
-  // Grouped filler patterns; tune this list as needed
-  const fillerRegex = /\b(?:um|uh|like|you\s+know|kind\s+of|sort\s+of|actually|basically|literally|i\s+mean|well|so)\b/gi;
-  const fillerMatches = normalized.match(fillerRegex) ?? [];
-  const fillerCount = fillerMatches.length;
-
-  const wordMatches = normalized.match(/\b[\p{L}\p{N}']+\b/gu) ?? [];
-  const totalWords = wordMatches.length;
-
-  const percentage = totalWords > 0 ? (fillerCount / totalWords) * 100 : 0;
-
-  // Simple visual severity for color hinting (good <15%, warn 15–<25%, bad >=25%)
-  const severity = percentage < 15 ? "good" : percentage < 25 ? "warn" : "bad";
-
-  return {
-    fillerCount,
-    totalWords,
-    percentage,
-    severity,
-  };
-}
-
-/*Format from seconds to mm:ss*/
-function formatSeconds(totalSeconds: number) {
-  if (!Number.isFinite(totalSeconds)) {
-    return "--:--";
-  }
-  const clamped = Math.max(0, Math.round(totalSeconds));
-  const minutes = Math.floor(clamped / 60);
-  const seconds = clamped % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function computeDurationStats(actualSeconds: number, goalSeconds: number) {
-  const ratio = goalSeconds > 0 ? actualSeconds / goalSeconds : 0;
-  const differenceSeconds = actualSeconds - goalSeconds;
-  const percentDiff = goalSeconds > 0 ? (differenceSeconds / goalSeconds) * 100 : 0;
-  let color: string;
-
-  if (goalSeconds > 0) {
-    if (actualSeconds < goalSeconds) {
-      color = "#3b82f6"; // blue color for under the goal
-    } else if (actualSeconds > goalSeconds) {
-      color = "#ef4444"; // red color for over the goal
-    } else {
-      color = "#10b981"; // green color for on the goal
-    }
-  } else {
-    color = "#10b981";
-  }
-
-  return {
-    ratio,
-    differenceSeconds,
-    percentDiff,
-    color,
-  };
-}
-
-import { ChartRadialShape as ChartRadialShapeMetric } from "@/components/chart-radial-shape1"
-import { ChartRadialShape as ChartRadialShapeDuration } from "@/components/chart-radial-shape2"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import type { Metric } from "@/components/ui/activity-card";
+import { ActivityCard } from "@/components/ui/activity-card";
+//
+import { CardSticky, ContainerScroll } from "@/components/cards-stack";
 import { Spotlight } from "@/components/ui/spotlight-new";
-import { ChartRadialStacked } from "@/components/chart-radial-stacked";
-import { CoachMessage } from "@/components/coach-message";
+import { ActivityIcon, AlertTriangle, CheckCircle2 } from "lucide-react";
+import Image from "next/image";
+import { useEffect, useState } from "react";
 
 export default function ReportPage() {
-  // TODO: Replace placeholder with real transcript JSON from backend
-  const sampleTranscript: TranscriptPlaceholder = {
-    text:
-      "Um thanks everyone for coming today. I want to, like, share a quick update on our roadmap. You know, we hit the main milestones—uh—and basically we're on track. Well, the key takeaway is that we need to focus on customer feedback.",
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("podium_feedback");
+      if (raw) setFeedback(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const fillerPercent = feedback?.fillerWords?.fillerPercent ?? 0;
+  const fillerCount = feedback?.fillerWords?.fillerCount ?? 0;
+  const totalWords = feedback?.fillerWords?.totalWords ?? 0;
+
+  const filler = {
+    percentage: fillerPercent,
+    fillerCount,
+    totalWords,
+    severity: fillerPercent < 15 ? "good" : fillerPercent < 25 ? "warn" : "bad",
+  } as {
+    percentage: number;
+    fillerCount: number;
+    totalWords: number;
+    severity: string;
   };
 
-  const filler = computeFillerStats(sampleTranscript.text);
+  const actualSeconds = feedback?.durationVsGoal?.actualSeconds ?? 0;
+  const goalSeconds = feedback?.durationVsGoal?.goalSeconds ?? 0;
+  // duration stats are computed ad-hoc in metrics; no separate gauge here
 
-  /*Computations for the Duration timer*/
-  const sampleDuration = { actualSeconds: 350, goalSeconds: 480,};
-  const duration = computeDurationStats(sampleDuration.actualSeconds, sampleDuration.goalSeconds);
-  const durationEndAngle = Math.min(360, Math.max(0, duration.ratio * 360));
-  
+  const reportMetrics: Metric[] = (() => {
+    const fillerValue = Number(filler.percentage.toFixed(1));
+    const durationMinutes = actualSeconds / 60;
+    const wpmAvg = Math.round(feedback?.speechRate?.avgWpm ?? 0);
+    const wpmCap = 200;
+
+    return [
+      {
+        label: "Filler",
+        value: String(fillerValue),
+        trend: Math.max(0, Math.min(100, fillerValue)),
+        unit: "%",
+        badge: `${filler.fillerCount} out of ${filler.totalWords}`,
+      },
+      {
+        label: "Duration",
+        value: durationMinutes.toFixed(1),
+        trend:
+          goalSeconds > 0
+            ? Math.max(0, Math.min(100, (actualSeconds / goalSeconds) * 100))
+            : 0,
+        unit: "min",
+        badge:
+          goalSeconds > 0
+            ? `${(goalSeconds / 60).toFixed(1)} min goal`
+            : undefined,
+      },
+      {
+        label: "WPM",
+        value: String(wpmAvg),
+        trend: Math.max(0, Math.min(100, (wpmAvg / wpmCap) * 100)),
+        unit: "wpm",
+        badge: "Target 130–170 WPM",
+      },
+    ];
+  })();
+
   return (
-    <main className="relative min-h-screen overflow-x-hidden">
-      <div className="min-h-dvh w-full rounded-md bg-black/[0.96] pb-16 antialiased bg-grid-white/[0.02] relative overflow-hidden">
+    <main className="relative h-screen overflow-hidden">
+      <div className="h-full w-full rounded-md bg-black/[0.96] antialiased bg-grid-white/[0.02] relative overflow-hidden">
         <Spotlight />
-        <div className="p-4 max-w-7xl mx-auto relative z-10 w-full">
-          <div className="space-y-8 p-4 md:p-8">
-            {/* Header */}
-            <section>
-              <h1 className="text-3xl font-bold tracking-tight">Let's talk about how you did</h1>
-      <p className="text-sm text-muted-foreground mt-2">
-                A quick snapshot of your delivery across key speaking metrics.
-              </p>
-            </section>
-            {/* Metrics Section */}
-            <section className="grid gap-6 md:grid-cols-3">
-        {/* Filler Words */}
-        <Card>
-          <CardHeader className="pb-0">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Filler Words</CardTitle>
-              <CardDescription>count / %</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <ChartRadialShapeMetric
-              value={Number(filler.percentage.toFixed(1))}
-              caption="Filler %"
-              withinCard
-              title="Filler Usage"
-              description="Lower is better"
-              footerPrimary={`${filler.fillerCount} fillers in ${filler.totalWords} words`}
-              footerSecondary="Aim for < 15%"
-              color={
-                filler.severity === "good"
-                  ? "#10b981"
-                  : filler.severity === "warn"
-                  ? "#f59e0b"
-                  : "#ef4444"
-              }
-              valueUnit="%"
-              endAngle={Math.min(360, Math.max(0, filler.percentage * 3.6))}
-            />
-            <div className="mt-3 text-xs text-muted-foreground">
-              <span className="text-foreground font-medium">{filler.fillerCount}</span> out of {filler.totalWords} words are filler
-            </div>
-            <p className="text-xs text-muted-foreground mt-3">Reduce ums/ahs/likes for cleaner delivery.</p>
-          </CardContent>
-        </Card>
-
-
-        {/* Duration Deviation */}
-        <Card>
-          <CardHeader className="pb-0">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Duration</CardTitle>
-              <CardDescription>mm:ss</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <ChartRadialShapeDuration
-              value={sampleDuration.actualSeconds / 60}
-              caption="Duration"
-              withinCard
-              title="Time Accuracy"
-              description="Closer to goal is better"
-              footerPrimary={`${formatSeconds(sampleDuration.actualSeconds)} actual vs ${formatSeconds(sampleDuration.goalSeconds)} goal`}
-              color={duration.color}
-              valueUnit=" min"
-              endAngle={durationEndAngle}
-            />
-            <div className="mt-3 text-xs text-muted-foreground">
-              <span className="text-foreground font-medium">{formatSeconds(sampleDuration.actualSeconds)}</span> actual vs {formatSeconds(sampleDuration.goalSeconds)} goal duration
-            </div>
-            <p className="text-xs text-muted-foreground mt-3">See how closely you matched your target time.</p>
-          </CardContent>
-        </Card>
-
-
-        {/* Speech Rate */}
-        <Card>
-          <CardHeader className="pb-0">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Speech Rate (WPM)</CardTitle>
-              <CardDescription>min-max</CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-4">
-            {(() => {
-              // TODO: Replace with backend-provided durations and per-window WPM series
-              const placeholderDurationSeconds = 125;
-              const placeholderWords = 280;
-              const wpmAvg = Math.round((placeholderWords / (placeholderDurationSeconds / 60)) || 0);
-              const wpmMin = 110; // placeholder min per sliding window
-              const wpmMax = 190; // placeholder max per sliding window
-              const wpmCap = 200; // display cap for gauge ends
-              const wpmColor =
-                wpmAvg < 110 || wpmAvg > 190
-                  ? "#ef4444" // red
-                  : wpmAvg < 130 || wpmAvg > 170
-                  ? "#f59e0b" // amber
-                  : "#10b981"; // green
-              const wpmStatus =
-                wpmAvg < 110
-                  ? "Pace: too slow"
-                  : wpmAvg < 130
-                  ? "Pace: slightly slow"
-                  : wpmAvg <= 170
-                  ? "Pace: within optimal range"
-                  : wpmAvg <= 190
-                  ? "Pace: slightly fast"
-                  : "Pace: too fast";
-
-              return (
-                <>
-                  <div className="mx-auto w-full max-w-[280px]">
-                    <ChartRadialStacked
-                      avg={wpmAvg}
-                      min={wpmMin}
-                      max={wpmMax}
-                      cap={wpmCap}
-                      single
-                      barColor={wpmColor}
-                      withinCard
-                      title="Speech Rate"
-                      description="Average WPM vs optimal zone"
-                    />
-                    <div className="-mt-6 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>0 WPM</span>
-                      <span>{wpmCap} WPM</span>
-                    </div>
+        <div className="p-4 max-w-7xl mx-auto relative z-10 w-full h-full">
+          <div className="p-4">
+            {/* Two-column layout: left empty, right report card */}
+            <section className="grid gap-6 grid-cols-7 h-[calc(100vh)] overflow-x-visible">
+              <div className="w-full space-y-6 col-span-3">
+                <section className="flex flex-row items-start gap-3">
+                  <div className="p-4 rounded-full bg-black/10">
+                    <ActivityIcon className="w-10 h-10 text-destructive" />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-3">{wpmStatus}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Target 130–170 WPM</p>
-                </>
-              );
-            })()}
-          </CardContent>
-        </Card>
+                  <div className="flex flex-col gap-2">
+                    <h1 className="text-3xl font-bold tracking-tight">
+                      Let&apos;s talk about how you did
+                    </h1>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      A quick snapshot of your delivery across key speaking
+                      metrics.
+                    </p>
+                  </div>
+                </section>
+                <ActivityCard
+                  className="md:ml-auto"
+                  metrics={reportMetrics}
+                  topics={feedback?.topics || []}
+                  listTitle="Identified Topics"
+                />
+              </div>
+              <div className="w-full space-y-6 col-span-4 h-full px-6 py-1 overflow-y-auto scrollbar-none">
+                {/* Stacked insight cards (scrollable only when there are cards) */}
+                <ContainerScroll
+                  className={`z-20 space-y-5 py-6 ${
+                    (feedback?.upsides || []).length +
+                      (feedback?.shortcomings || []).length ===
+                    0
+                      ? "h-auto overflow-visible"
+                      : "min-h-[300vh]"
+                  }`}
+                >
+                  {[
+                    ...(feedback?.upsides || []).map((text) => ({
+                      type: "upside" as const,
+                      text,
+                    })),
+                    ...(feedback?.shortcomings || []).map((text) => ({
+                      type: "shortcoming" as const,
+                      text,
+                    })),
+                  ].map((item, index) => (
+                    <CardSticky
+                      key={`${item.type}-${index}`}
+                      index={index + 2}
+                      className="rounded-2xl border p-6 shadow-sm backdrop-blur-md bg-zinc-900/50"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          {item.type === "upside" ? (
+                            <CheckCircle2 className="w-5 h-5 text-success" />
+                          ) : (
+                            <AlertTriangle className="w-5 h-5 text-destructive" />
+                          )}
+                          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                            {item.type === "upside" ? "Upside" : "Shortcoming"}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                      </div>
+                      <p className="mt-4 text-lg leading-snug">{item.text}</p>
+                    </CardSticky>
+                  ))}
 
-
-            </section>
-            {/* Coach Feedback */}
-            <section>
-              <Card className="bg-transparent border-none shadow-none">
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium">Coach Feedback</CardTitle>
-                  <CardDescription>AI coach summary and suggestions</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <CoachMessage
-                    // TODO: Replace placeholder with backend-generated paragraphs
-                    paragraphs={[
-                      "Great job maintaining a confident tone and clear structure throughout your talk.",
-                      "Try to reduce filler words and add a brief pause before key points to give them more impact.",
-                      "Consider closing with a concise call-to-action to strengthen your ending.",
-                    ]}
-                    avatarSrc="/avatars/olga-noback.jpeg" // Place your image at frontend/public/avatars/coach.jpg
-                    name="Coach"
-                    typingDelayMs={1200}
+                  {/* Mascot at the end of the stack */}
+                </ContainerScroll>
+                <div className="absolute bottom-0 right-60  items-center gap-3 pt-12 text-right max-w-[360px]">
+                  <blockquote className="text-lg tracking-wide text-white/50 italic leading-snug mb-3">
+                    “The one easy way to become worth 50 percent more than you
+                    are now—at least—is to hone your communication skills—both
+                    written and verbal.”
+                    <footer className="mt-1 text-white/60 not-italic">
+                      — Warren Buffett
+                    </footer>
+                  </blockquote>
+                  <Image
+                    src="/avatars/olga-noback.jpeg"
+                    alt="Olga"
+                    className="opacity-90 rounded-full"
+                    width={200}
+                    height={200}
                   />
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </section>
           </div>
         </div>
@@ -254,5 +202,3 @@ export default function ReportPage() {
     </main>
   );
 }
-
-

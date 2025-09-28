@@ -9,13 +9,23 @@ import {
 } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
 // removed slider
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Spotlight } from "@/components/ui/spotlight-new";
+import { Textarea } from "@/components/ui/textarea";
 import WalkingAudience from "@/components/walkers";
 import { wsClient } from "@/lib/wsClient";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 const CATEGORIES = ["technical_pitch", "design_review", "fundraising"] as const;
 const CATEGORY_LABELS: Record<(typeof CATEGORIES)[number], string> = {
@@ -29,6 +39,9 @@ export default function QuestionnairePage() {
   const categories = useMemo(() => CATEGORIES.slice(), []);
   const [showForm, setShowForm] = useState<boolean>(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState("");
+  const loadingTimersRef = useRef<number[]>([]);
   const apiBase = useMemo(
     () => process.env.NEXT_PUBLIC_BACKEND_URL as string,
     []
@@ -49,6 +62,35 @@ export default function QuestionnairePage() {
   async function onSubmit() {
     if (busy) return;
     setBusy(true);
+    // staged progress messages aligned with app purpose
+    try {
+      // Clear any previous timers
+      loadingTimersRef.current.forEach((id) => window.clearTimeout(id));
+      loadingTimersRef.current = [];
+    } catch {}
+    setProgress(8);
+    setStatus("Preparing pitch...");
+    const t1: number = window.setTimeout(() => {
+      setProgress(20);
+      setStatus("Seeding personas...");
+    }, 2000);
+    const t2: number = window.setTimeout(() => {
+      setProgress(40);
+      setStatus("Generating audience profiles...");
+    }, 4500);
+    const t3: number = window.setTimeout(() => {
+      setProgress(60);
+      setStatus("Warming up the stage...");
+    }, 7500);
+    const t4: number = window.setTimeout(() => {
+      setProgress(80);
+      setStatus("Dialing realtime channel...");
+    }, 10000);
+    const t5: number = window.setTimeout(() => {
+      setProgress(95);
+      setStatus("Gathering the crowd...");
+    }, 13000);
+    loadingTimersRef.current.push(t1, t2, t3, t4, t5);
     try {
       const res = await fetch(`${apiBase}/rooms`, {
         method: "POST",
@@ -62,6 +104,12 @@ export default function QuestionnairePage() {
         }),
       });
       if (!res.ok) throw new Error(`create room failed ${res.status}`);
+      setProgress(100);
+      setStatus("Gathering the crowd...");
+      try {
+        loadingTimersRef.current.forEach((id) => window.clearTimeout(id));
+        loadingTimersRef.current = [];
+      } catch {}
       const {
         id: roomId,
         bots,
@@ -84,9 +132,18 @@ export default function QuestionnairePage() {
           wsClient.sendJson({ event: "join", payload: { bot: b } });
         });
       } catch {}
-      router.push(`/scene`);
+      // Small delay to let UI complete progress animation
+      window.setTimeout(() => {
+        router.push(`/scene`);
+      }, 200);
     } catch {
       setBusy(false);
+      setProgress(0);
+      setStatus("");
+      try {
+        loadingTimersRef.current.forEach((id) => window.clearTimeout(id));
+        loadingTimersRef.current = [];
+      } catch {}
     }
   }
 
@@ -138,8 +195,12 @@ export default function QuestionnairePage() {
               exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", stiffness: 260, damping: 28 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              onClick={() => setShowForm(false)}
             >
-              <div className="w-full max-w-md">
+              <div
+                className="w-full max-w-md"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <Form {...form}>
                   <form
                     onSubmit={form.handleSubmit(onSubmit)}
@@ -154,56 +215,8 @@ export default function QuestionnairePage() {
                       </p>
                     </div>
 
-                    <div className="space-y-2">
-                      <FormField
-                        control={form.control}
-                        name="category"
-                        render={({ field }) => (
-                          <FormItem>
-                            <Label htmlFor="durationMinutes" className="py-1">
-                              Category
-                            </Label>
-                            <FormControl>
-                              <select
-                                className="w-full h-10 rounded-md border bg-background px-3 text-sm"
-                                value={field.value}
-                                onChange={field.onChange}
-                              >
-                                {categories.map((c: string) => (
-                                  <option key={c} value={c}>
-                                    {CATEGORY_LABELS[
-                                      c as (typeof CATEGORIES)[number]
-                                    ] || c}
-                                  </option>
-                                ))}
-                              </select>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="topic"
-                        render={({ field }) => (
-                          <FormItem>
-                            <Label htmlFor="durationMinutes" className="py-1">
-                              Topic
-                            </Label>
-                            <FormControl>
-                              <textarea
-                                className="w-full min-h-24 rounded-md border bg-background px-3 py-2 text-sm"
-                                placeholder="e.g., Building a realtime AI presenter with WebGPU and WASM"
-                                value={field.value}
-                                onChange={field.onChange}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
+                    <div className="mb-4">
+                      {" "}
                       <FormField
                         control={form.control}
                         name="durationMinutes"
@@ -243,22 +256,76 @@ export default function QuestionnairePage() {
                         }}
                       />
                     </div>
+                    <div className="space-y-2">
+                      <FormField
+                        control={form.control}
+                        name="category"
+                        render={({ field }) => (
+                          <FormItem>
+                            <Label htmlFor="durationMinutes" className="py-1">
+                              Category
+                            </Label>
+                            <FormControl>
+                              <Select
+                                onValueChange={field.onChange}
+                                defaultValue={field.value}
+                              >
+                                <SelectTrigger className="w-full h-10">
+                                  <SelectValue placeholder="Select category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {categories.map((c: string) => (
+                                    <SelectItem key={c} value={c}>
+                                      {CATEGORY_LABELS[
+                                        c as (typeof CATEGORIES)[number]
+                                      ] || c}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                    <div className="mt-5 flex justify-between">
-                      <button
-                        type="button"
-                        onClick={() => setShowForm(false)}
-                        className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium hover:opacity-90"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="inline-flex h-10 items-center justify-center rounded-md border bg-primary text-primary-foreground px-4 text-sm font-medium hover:opacity-90 disabled:opacity-60"
-                        disabled={busy}
-                      >
-                        {busy ? "Connecting…" : "Start scene"}
-                      </button>
+                      <FormField
+                        control={form.control}
+                        name="topic"
+                        render={({ field }) => (
+                          <FormItem>
+                            <Label htmlFor="durationMinutes" className="py-1">
+                              Topic
+                            </Label>
+                            <FormControl>
+                              <Textarea
+                                className="min-h-24"
+                                placeholder="e.g., Building a realtime AI presenter with WebGPU and WASM"
+                                value={field.value}
+                                onChange={field.onChange}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className="mt-5">
+                      {busy ? (
+                        <div className="space-y-2">
+                          <Progress value={progress} className="w-full" />
+                          <div className="text-center">
+                            <p className="text-sm mt-1 text-muted-foreground">
+                              {status}
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button type="submit" className="w-full h-12">
+                          Start scene
+                        </Button>
+                      )}
                     </div>
                   </form>
                 </Form>
