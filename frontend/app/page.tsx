@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import WalkingAudience from "@/components/walkers";
 import { wsClient } from "@/lib/wsClient";
 import { AnimatePresence, motion } from "framer-motion";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -155,22 +156,41 @@ export default function Home() {
           initial={{ opacity: 1, y: 0 }}
           animate={{ opacity: showForm ? 0 : 1, y: showForm ? -8 : 0 }}
           transition={{ duration: 0.35, ease: "easeInOut" }}
-          className="p-4 max-w-7xl mx-auto relative z-10 w-full"
+          className="p-0 max-w-7xl mx-auto relative z-10 w-full"
         >
-          <h1 className="text-4xl md:text-7xl font-bold text-center bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400 bg-opacity-50">
-            Pitch your idea.
-            <br /> Make it unforgettable.
-          </h1>
-          <p className="mt-4 font-normal text-base text-neutral-300 max-w-lg text-center mx-auto">
-            Seed your audience, pick a length, and start your scene.
-          </p>
-          <div className="mt-8 flex justify-center">
-            <button
-              onClick={() => setShowForm(true)}
-              className="inline-flex h-10 items-center justify-center rounded-md border bg-primary text-primary-foreground px-6 text-sm font-medium hover:opacity-90"
-            >
-              Start
-            </button>
+          <div className="flex items-center justify-center">
+            <Image
+              src="/avatars/olga-noback.jpeg"
+              alt="Olga"
+              className="opacity-90 rounded-full"
+              width={300}
+              height={300}
+            />
+            <div>
+              <h1 className="text-4xl md:text-7xl font-bold text-left">
+                <span className="bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400">
+                  Bomb your{" "}
+                </span>
+                <span className="bg-clip-text text-transparent bg-gradient-to-b from-blue-400 to-blue-800">
+                  Pitch
+                </span>
+                <span className="bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400">
+                  .
+                  <br /> Make it unforgettable.
+                </span>
+              </h1>
+              <p className="mt-4 font-normal text-base text-neutral-300 max-w-lg text-left">
+                Seed your audience, pick a length, and start your scene.
+              </p>
+              <div className="mt-8 flex justify-start">
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="inline-flex h-12 items-center justify-center rounded-md border bg-primary text-primary-foreground px-8 text-lg font-medium hover:opacity-90"
+                >
+                  Begin...🎤
+                </button>
+              </div>
+            </div>
           </div>
         </motion.div>
       </div>
