@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 import random
 import time
+import math
 
 from app.core.config import get_settings
 from app.api.rooms import router as rooms_router
@@ -20,7 +21,6 @@ from typing import Optional
 from app.services.reaction_config import (
     STAGE2_TIMEOUT_S,
     get_phrases,
-    should_escalate,
     compute_reaction_probability,
 )
 from app.services import reaction_config as rc
@@ -82,7 +82,7 @@ async def _on_transcript_chunk(payload: dict) -> None:
     flush_meta = payload.get("flush_meta") or {}
 
     # Get tail context BEFORE appending current chunk to avoid duplication
-    tail_context = app.state.room_manager.get_transcript_tail_chars(room_id, 100)
+    tail_context = app.state.room_manager.get_transcript_tail_chars(room_id, 150)
     await app.state.ws_manager.broadcast_json(
         room_id, {"event": "transcript", "payload": payload}
     )
@@ -142,6 +142,7 @@ async def _on_transcript_chunk(payload: dict) -> None:
         default_phrase = getattr(rc, "DEFAULT_PHRASE", {}).get(bucket, "")
         phrase = phrases[random.randint(0, len(phrases) - 1)] if phrases else default_phrase
 
+        
         await asyncio.sleep(random.uniform(0.2, 2))
 
         # Stage-1 no longer computes any score delta
@@ -150,20 +151,24 @@ async def _on_transcript_chunk(payload: dict) -> None:
     async def generate_and_publish_reactions():
 
 
-        async def one_bot_react(bot):
+        async def one_bot_react(bot, start_delay_s: float = 0.0, leave_delay_s: float = 0.0):
+            # Stagger start to avoid simultaneous reactions
+            if start_delay_s > 0:
+                try:
+                    await asyncio.sleep(start_delay_s)
+                except Exception:
+                    pass
             try:
                 start = asyncio.get_event_loop().time()
                 stance = bot.personality.stance
                 is_question = bool(flush_meta.get("question"))
                 # suppression: use configured probability to ignore entirely
-                if random.random() < 0.50:
+                if random.random() < 0.30:
                     reaction = None
                 else:
-                    # base: allowed only on questions for certain stances
-                    escalate, escalate_allowed = should_escalate(is_question, stance)
 
                     stage1_used = False
-                    if escalate and escalate_allowed:
+                    if random.random() < 0.65:
                         try:
                             # Include prior transcript tail to provide brief context
                             stage2_input = f"{tail_context}{text_chunk}"
@@ -178,7 +183,7 @@ async def _on_transcript_chunk(payload: dict) -> None:
                             stage1_used = True
                     else:
                         # running supression prob again to increase randomness
-                        if random.random() < 0.55:
+                        if random.random() < 0.65:
                             reaction = None
                         else:
                             reaction = await stage1_react(bot, text_chunk, flush_meta)
@@ -241,23 +246,70 @@ async def _on_transcript_chunk(payload: dict) -> None:
                         "bot:reaction",
                         {"roomId": room_id, "botId": bot.id, "reaction": reaction},
                     )
+                    # Update engagement and auto-leave if it drops too low
+                    # Parse and clamp engagement delta from model
+                    def _parse_delta(val):
+                        try:
+                            if isinstance(val, (int, float)):
+                                return int(round(float(val)))
+                            if isinstance(val, str):
+                                return int(round(float(val.strip())))
+                        except Exception:
+                            return 0
+                        return 0
+                    delta = _parse_delta(reaction.get("score_delta", 0))
+                    # Clamp input delta to [-5, 5]
+                    delta = max(-5, min(5, delta))
+                    # Make deductions stricter: amplify negatives slightly
+                    if delta < 0:
+                        # e.g., -1 -> -2, -2 -> -3, -3 -> -4, -4/-5 stay as is
+                        delta = max(-5, delta - 1)
+                    try:
+                        before = float(bot.state.engagementScore)
+                        after = before + float(delta)
+                        # Cap maximum engagement at 10
+                        if after > 10.0:
+                            after = 10.0
+                        bot.state.engagementScore = after
+                        print(f"[bot] engagement update room={room_id} bot={bot.id} delta={delta} score={after:.1f}")
+                    except Exception:
+                        pass
+                    # Threshold for removal
+                    try:
+                        threshold = -10.0
+                        score = float(bot.state.engagementScore)
+                        if score <= threshold:
+                            # Stagger leave to avoid simultaneous exits
+                            if leave_delay_s > 0:
+                                try:
+                                    await asyncio.sleep(leave_delay_s)
+                                except Exception:
+                                    pass
+                            print(f"[bot] engagement low, removing bot room={room_id} bot={bot.id} score={score}")
+                            # Remove from room and broadcast leave
+                            app.state.room_manager.remove_bot_from_room(room_id, bot.id)
+                            await app.state.event_bus.publish("bot:leave", {"roomId": room_id, "botId": bot.id})
+                            return
+                    except Exception as e:
+                        print(f"[bot] engagement check error room={room_id} bot={bot.id} err={e}")
                 else:
                     print(f"[bot] reaction suppressed room={room_id} bot={bot.id}")
             else:
                 print(f"[bot] NO REACTION room={room_id} bot={bot.id}")
 
-        tasks = []
-        for bot in bots_in_room:
+        # Sequentially process bots with staggered delays to avoid bursts
+        for idx, bot in enumerate(bots_in_room):
             print(f"[bot] start reaction room={room_id} bot={bot.id}")
-            tasks.append(asyncio.create_task(one_bot_react(bot)))
+            start_delay = 0.10 + 0.20 * idx + random.uniform(0.05, 0.25)
+            leave_delay = 0.05 + 0.10 * idx + random.uniform(0.05, 0.20)
+            await one_bot_react(bot, start_delay, leave_delay)
 
+        # Append transcript AFTER reactions are published to avoid duplicating
+        # the current chunk when constructing Stage-2 context (tail + chunk)
         try:
-            if tasks:
-                await asyncio.gather(*tasks)
-        finally:
-            # Append transcript AFTER reactions are published to avoid duplicating
-            # the current chunk when constructing Stage-2 context (tail + chunk)
             app.state.room_manager.append_transcript(room_id, text_chunk)
+        except Exception:
+            pass
 
     asyncio.create_task(generate_and_publish_reactions())
 

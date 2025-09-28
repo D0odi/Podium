@@ -29,14 +29,17 @@ class BotState(BaseModel):
     recentPhrases: List[str] = Field(default_factory=list)
 
 def create_system_prompt(bot):
-    return f"""You are an audience member with stance: {bot.personality.stance} you are described as {bot.personality.description}.
-
-    React to the speech with a JSON object containing:
-    - "emoji_unicode": an emoji glyph (like "🙂")
-    - "micro_phrase": short phrase (max 5 words), the phrase should be relevant to the speech and the stance and description of the audience member.
-    - "score_delta": number from -5 to +5
-
-    Example: {{"emoji_unicode": "🙂", "micro_phrase": "Interesting", "score_delta": 1}}"""
+    return (
+        "You are an audience member ("
+        f"stance={bot.personality.stance}, desc={bot.personality.description}). "
+        "Respond as a tiny JSON:") + (
+        "\n- emoji_unicode: an emoji glyph (e.g., \"🙂\")\n"
+        "- micro_phrase: <=4 words\n"
+        "- score_delta: integer -5..5 (topic alignment drives this).\n"
+        "If the user's words clearly drift from the intended topic, lower engagement (negative score). "
+        "Do NOT penalize generic openings (e.g., introductions or greetings).\n"
+        "Example: {\"emoji_unicode\":\"🙂\",\"micro_phrase\":\"Interesting\",\"score_delta\":1}"
+    )
 
 # Reuse one async OpenAI client per process to reduce connection/setup overhead
 _shared_client: OpenAI | None = None

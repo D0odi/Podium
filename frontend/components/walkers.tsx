@@ -311,7 +311,7 @@ export default function WalkingAudience({
   );
 }
 
-// Walkable stage with autonomous random walking bots
+// Walkable stage with autonomous random bots
 export function WalkableStage({
   bots,
   className,
