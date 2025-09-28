@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import asyncio
 import uuid
 import random
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File
 
 from app.schemas.room import (
     CreateRoomRequest,
@@ -15,7 +15,10 @@ from app.events.bus import EventBus
 from app.services.bot_spawner import generatePersonaPool, AVATAR_EMOJIS
 from app.services.bot import Bot as ServiceBot, BotPersona, BotState
 from app.services.coach_anal.coach import get_coach_feedback
+from app.services.coach_anal.speech_to_text import convert_speech
 import httpx
+import tempfile
+import shutil
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
@@ -118,15 +121,50 @@ async def remove_bot(
     return None
 
 @router.post("/{roomId}/feedback", status_code=202)
-async def get_final_feedback(roomId: str, request: Request, bus: EventBus = Depends(get_bus)) -> dict:
+async def get_final_feedback(
+    roomId: str,
+    request: Request,
+    audio: UploadFile | None = File(default=None),
+    bus: EventBus = Depends(get_bus),
+) -> dict:
     room_manager = request.app.state.room_manager
-    transcript = room_manager.get_transcript_window(roomId, seconds=3600) # Get full transcript
+    transcript = None
+    dg_response = None
+    speech_duration = None
 
-    if not transcript:
-        raise HTTPException(status_code=404, detail="No transcript found for this room.")
-    
+    # Prefer uploaded audio if provided; else fall back to stored transcript
+    if audio is not None:
+        # Persist to a temporary file to pass a path to convert_speech
+        try:
+            suffix = ".wav"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(audio.file, tmp)
+                tmp_path = tmp.name
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to save uploaded audio: {e}")
+
+        deepgram_api_key = getattr(request.app.state.settings, "deepgram_api_key", None)
+        if not deepgram_api_key:
+            raise HTTPException(status_code=500, detail="Deepgram API key not configured")
+
+        try:
+            dg_response = convert_speech(tmp_path, deepgram_api_key)
+            transcript = dg_response['results']['channels'][0]['alternatives'][0]['transcript']
+            speech_duration = dg_response['metadata']['duration']
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Transcription failed: {e}")
+    else:
+        transcript = room_manager.get_transcript_window(roomId, seconds=3600)
+        if not transcript:
+            raise HTTPException(status_code=404, detail="No transcript or audio provided for this room")
+
     duration_goal = room_manager.get_duration_seconds(roomId)
-    feedback = get_coach_feedback(transcript, duration_goal)
+    feedback = get_coach_feedback(
+        transcript,
+        duration_goal,
+        speech_duration=speech_duration or 0,
+        dg_response=dg_response or {},
+    )
 
     if feedback:
         async with httpx.AsyncClient(timeout=10.0) as client:
