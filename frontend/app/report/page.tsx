@@ -94,7 +94,7 @@ export default function ReportPage() {
             {/* Header */}
             <section>
               <h1 className="text-3xl font-bold tracking-tight">Let's talk about how you did</h1>
-              <p className="text-sm text-muted-foreground mt-2">
+      <p className="text-sm text-muted-foreground mt-2">
                 A quick snapshot of your delivery across key speaking metrics.
               </p>
             </section>
@@ -179,6 +179,7 @@ export default function ReportPage() {
               const wpmAvg = Math.round((placeholderWords / (placeholderDurationSeconds / 60)) || 0);
               const wpmMin = 110; // placeholder min per sliding window
               const wpmMax = 190; // placeholder max per sliding window
+              const wpmCap = 200; // display cap for gauge ends
               const wpmColor =
                 wpmAvg < 110 || wpmAvg > 190
                   ? "#ef4444" // red
@@ -198,16 +199,23 @@ export default function ReportPage() {
 
               return (
                 <>
-                  <ChartRadialStacked
-                    avg={wpmAvg}
-                    min={wpmMin}
-                    max={wpmMax}
-                    single
-                    barColor={wpmColor}
-                    withinCard
-                    title="Speech Rate"
-                    description="Average WPM vs optimal zone"
-                  />
+                  <div className="mx-auto w-full max-w-[280px]">
+                    <ChartRadialStacked
+                      avg={wpmAvg}
+                      min={wpmMin}
+                      max={wpmMax}
+                      cap={wpmCap}
+                      single
+                      barColor={wpmColor}
+                      withinCard
+                      title="Speech Rate"
+                      description="Average WPM vs optimal zone"
+                    />
+                    <div className="-mt-6 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>0 WPM</span>
+                      <span>{wpmCap} WPM</span>
+                    </div>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-3">{wpmStatus}</p>
                   <p className="text-xs text-muted-foreground mt-1">Target 130–170 WPM</p>
                 </>
@@ -215,6 +223,8 @@ export default function ReportPage() {
             })()}
           </CardContent>
         </Card>
+
+
             </section>
             {/* Coach Feedback */}
             <section>
