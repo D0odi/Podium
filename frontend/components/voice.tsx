@@ -43,7 +43,7 @@ export const AudioRecorderWithVisualizer = ({
   };
   // States
   const [isRecording, setIsRecording] = useState<boolean>(false);
-  const [, setIsRecordingFinished] = useState<boolean>(false);
+  // const [, setIsRecordingFinished] = useState<boolean>(false);
   const [timer, setTimer] = useState<number>(0);
   const [currentRecord, setCurrentRecord] = useState<Record>({
     id: -1,
@@ -255,16 +255,7 @@ export const AudioRecorderWithVisualizer = ({
     el.scrollLeft = el.scrollWidth;
   }, [finalText, interimText]);
 
-  function downloadTranscript() {
-    const text = `${finalText} ${interimText}`.trim();
-    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `transcript_${Date.now()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
+  // Removed manual transcript download in favor of server-side feedback upload
 
   const downloadCurrentAudio = () => {
     speechRef.current?.downloadCurrentAudio();
@@ -303,15 +294,7 @@ export const AudioRecorderWithVisualizer = ({
   }
 
   // Clear only current buffers and texts without stopping recording
-  function clearCurrent() {
-    dbg("clearCurrent called");
-    try {
-      speechRef.current?.clearBuffers();
-    } catch {}
-    setFinalText("");
-    setInterimText("");
-    setTimer(0);
-  }
+  // Removed clearCurrent button usage; session ends via finalize upload
 
   return (
     <div className={cn("w-full relative", className)}>
@@ -327,46 +310,6 @@ export const AudioRecorderWithVisualizer = ({
               transition={{ duration: 0.25 }}
             >
               <div className="relative flex items-center gap-3 z-10">
-                {/* Olga image behind Final report button when not recording and not idle */}
-                <motion.div
-                  className="absolute -right-13 top-1 rotate-[45deg] pointer-events-none select-none -z-10"
-                  initial={{ opacity: 0, scale: 0.92 }}
-                  animate={{
-                    opacity: !isRecording && uiPhase !== "idle" ? 1 : 0,
-                    scale: !isRecording && uiPhase !== "idle" ? 1 : 0.96,
-                  }}
-                  transition={{ duration: 0.3, ease: "easeOut" }}
-                >
-                  <Image
-                    src="/avatars/olga-noback.jpeg"
-                    alt="Olga"
-                    className="opacity-70"
-                    width={90}
-                    height={90}
-                  />
-                </motion.div>
-                {uiPhase !== "idle" ? (
-                  <motion.button
-                    layout
-                    onClick={() => {}}
-                    className="inline-flex min-h-[6rem] min-w-24 px-7 items-center justify-center rounded-xl border-2 border-foreground/20 text-card-foreground shadow-xl ring-1 ring-black/5 hover:shadow-xl transition-transform duration-150 ease-out hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                    style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}
-                    initial={{ scale: 1 }}
-                    animate={{ scale: 1 }}
-                    whileHover={{ scale: 1.05 }}
-                    transition={{
-                      type: "tween",
-                      duration: 0.15,
-                      ease: "easeOut",
-                    }}
-                    title="Q&A"
-                  >
-                    <span className="text-xl tracking-wider font-semibold">
-                      Q&A
-                    </span>
-                  </motion.button>
-                ) : null}
-
                 <motion.button
                   layout
                   layoutId="big-cta"
@@ -384,13 +327,7 @@ export const AudioRecorderWithVisualizer = ({
                     ease: "easeOut",
                   }}
                 >
-                  {uiPhase === "idle" ? (
-                    <Mic size={28} />
-                  ) : (
-                    <span className="text-xl tracking-wider font-semibold">
-                      Final report?
-                    </span>
-                  )}
+                  <Mic size={28} />
                 </motion.button>
               </div>
             </motion.div>
@@ -471,12 +408,40 @@ export const AudioRecorderWithVisualizer = ({
                 layout
                 layoutId="big-cta"
                 onClick={() => {
-                  clearCurrent();
-                  setIsRecording(false);
-                  setUiPhase("final");
-                  setIsOlgaVisible(false);
-                  if (olgaTimeoutRef.current)
-                    clearTimeout(olgaTimeoutRef.current);
+                  (async () => {
+                    try {
+                      // Disconnect live transcript WS
+                      try {
+                        transcriptWs.disconnect();
+                      } catch {}
+                      // Stop recording stream
+                      const wav = speechRef.current?.getCurrentAudioBlob();
+                      setIsRecording(false);
+                      setUiPhase("idle");
+                      setIsOlgaVisible(false);
+                      if (olgaTimeoutRef.current)
+                        clearTimeout(olgaTimeoutRef.current);
+                      try {
+                        speechRef.current?.stop();
+                      } catch {}
+                      // Upload WAV to backend feedback endpoint
+                      if (wav && apiBase && roomId) {
+                        const form = new FormData();
+                        form.append("audio", wav, `Audio_${Date.now()}.wav`);
+                        const res = await fetch(
+                          `${apiBase}/rooms/${roomId}/feedback`,
+                          {
+                            method: "POST",
+                            body: form,
+                          }
+                        );
+                        const json = await res.json().catch(() => ({}));
+                        console.log("/feedback response", res.status, json);
+                      }
+                    } catch (e) {
+                      console.log("finalize error", e);
+                    }
+                  })();
                 }}
                 className="relative shadow-md shadow-black z-10 inline-flex h-full min-h-[6rem] w-28 items-center justify-center rounded-lg border  text-card-foreground hover:bg-accent hover:text-accent-foreground"
                 style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}

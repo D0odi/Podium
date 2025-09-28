@@ -8,10 +8,10 @@ from deepgram import (
 
 
 
-def convert_speech(audio_path, deepgram_api) :
+def convert_speech(audio_path) :
     try:
         # Set a generous timeout (30 minutes) to handle long audio uploads & processing
-        deepgram = DeepgramClient(deepgram_api)
+        deepgram = DeepgramClient("47a26aa81e2ff513670139f160e1af2429c2812d")
 
         with open(audio_path, "rb") as file:
             payload: FileSource = {"buffer": file.read()}

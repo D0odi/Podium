@@ -235,6 +235,18 @@ export class SpeechStream {
     }
   }
 
+  // Return the current audio buffer as a WAV blob, without stopping the stream
+  getCurrentAudioBlob(): Blob | null {
+    try {
+      if (this.chunks.length > 0) {
+        return new Blob(this.chunks, { type: "audio/wav" });
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
   // Clear only buffered downloadable audio without stopping stream
   clearBuffers(): void {
     try {

@@ -5,7 +5,6 @@ from deepgram import DeepgramClient, AnalyzeOptions, TextSource
 
 def analyze(
     transcribed_text: str,
-    deepgram_api_key: str,
     *,
     language: str = "en",
     sentiment: bool = True,
@@ -34,10 +33,8 @@ def analyze(
 
     if not transcribed_text:
         raise ValueError("transcribed_text must not be empty")
-    if not deepgram_api_key:
-        raise ValueError("deepgram_api_key must not be empty")
 
-    dg_client = DeepgramClient(deepgram_api_key)
+    dg_client = DeepgramClient("47a26aa81e2ff513670139f160e1af2429c2812d")
 
     payload: TextSource = {"buffer": transcribed_text}
 

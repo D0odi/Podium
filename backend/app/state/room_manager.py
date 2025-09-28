@@ -47,6 +47,25 @@ class RoomManager:
         room = self.ensure_room(room_id)
         return room.duration_seconds
 
+    def set_duration_minutes(self, room_id: str, duration_minutes: Optional[int]) -> None:
+        if duration_minutes is None:
+            self.set_duration_seconds(room_id, None)
+            return
+        try:
+            seconds = int(max(0, duration_minutes)) * 60
+        except Exception:
+            seconds = None
+        self.set_duration_seconds(room_id, seconds)
+
+    def get_duration_minutes(self, room_id: str) -> Optional[int]:
+        sec = self.get_duration_seconds(room_id)
+        if sec is None:
+            return None
+        try:
+            return max(0, int(round(sec / 60)))
+        except Exception:
+            return None
+
     def set_persona_pool(self, room_id: str, pool: List[Dict[str, Any]]) -> None:
         room = self.ensure_room(room_id)
         room.persona_pool = list(pool) if isinstance(pool, list) else []

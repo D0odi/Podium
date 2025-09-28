@@ -22,7 +22,9 @@ class Bot(BaseModel):
 class CreateRoomRequest(BaseModel):
     category: str
     topic: str
-    durationSeconds: int
+    # Accept minutes primarily; keep seconds for backward compatibility
+    durationMinutes: Optional[int] = None
+    durationSeconds: Optional[int] = None
 
 
 class CreateRoomResponse(BaseModel):

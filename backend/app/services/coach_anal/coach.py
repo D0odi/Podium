@@ -3,13 +3,13 @@ import json
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
-from util import (
+from .util import (
     calculateMinMaxWpm,
     calculateWpm,
     countFillerWords,
     calculateLongPauseRatio,
 )
-from analyze_text import analyze
+from .analyze_text import analyze
 
 load_dotenv() 
 
@@ -217,13 +217,8 @@ def get_coach_feedback(
     if not isinstance(transcript, str) or not transcript.strip():
         raise ValueError("transcript must be a non-empty string")
 
-    # Required deep analysis using Deepgram Analyze API
-    deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
-    if not deepgram_api_key:
-        raise RuntimeError("DEEPGRAM_API_KEY is required for deep analysis")
     deep_analysis = analyze(
         transcript,
-        deepgram_api_key,
         language="en",
         sentiment=True,
         intents=False,
