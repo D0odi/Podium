@@ -14,15 +14,13 @@ from app.events.bus import EventBus
 from app.services.bot_spawner import createBotFromPool, generatePersonaPool
 from app.services.reaction_config import CATEGORIES
 import random
-from app.services.coach import create_megaknight_coach
+from app.services.coach import get_coach_feedback
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
 @router.post("", response_model=CreateRoomResponse, status_code=201)
 async def create_room(request: Request, body: CreateRoomRequest | None = None) -> CreateRoomResponse:
     room_id = str(uuid.uuid4())
-    coach = create_megaknight_coach()
-    request.app.state.room_manager.add_coach_to_room(room_id, coach)
     # category if provided
     category = None
     try:
@@ -117,8 +115,6 @@ async def create_room(request: Request, body: CreateRoomRequest | None = None) -
         updatedAt=datetime.now(timezone.utc),
     )
 
-# Removed: /rooms/{roomId}/state — initial state is now returned by POST /rooms
-
 def get_bus(request: Request) -> EventBus:
     return request.app.state.event_bus
 
@@ -163,17 +159,17 @@ async def remove_bot(
 @router.post("/{roomId}/feedback", status_code=202)
 async def get_final_feedback(roomId: str, request: Request, bus: EventBus = Depends(get_bus)) -> dict:
     room_manager = request.app.state.room_manager
-    coach = room_manager.get_coach_in_room(roomId)
+    transcript = room_manager.get_transcript_window(roomId, seconds=3600) # Get full transcript
+
+    if not transcript:
+        raise HTTPException(status_code=404, detail="No transcript found for this room.")
     
-    if not coach:
-        raise HTTPException(status_code=404, detail="Coach not found for this room.")
-    
-    feedback = await coach.generate_end_session_feedback()
+    feedback = get_coach_feedback(transcript)
 
     if feedback:
         await bus.publish(
             "coach:feedback",
-            {"roomId": roomId, "coachId": coach.id, "feedback": feedback}
+            {"roomId": roomId, "feedback": feedback}
         )
         return {"status": "feedback_generation_queued"}
     

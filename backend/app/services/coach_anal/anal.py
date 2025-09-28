@@ -30,5 +30,6 @@ def anal():
     print(transcribed_text)
     response_coach = coach_result(OPENAI_API_KEY, transcribed_text, analysis_response, calculateLongPauseRatio(transcribed_text_json), calculateWpm (transcribed_text_json), transcribed_text_json['metadata']['duration'],  countFillerWords(transcribed_text_json))
 
-    #print(response_coach)
+    print(response_coach)
 
+anal()

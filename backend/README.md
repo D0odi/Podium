@@ -151,7 +151,7 @@ echo $ROOM_ID
 Browser console (go to http://127.0.0.1:8000/docs):
 
 ```js
-const ROOM_ID = "aff930ab-31d0-4d3d-b7e5-e69cd2d12c3a";
+const ROOM_ID = "13e814ea-10f3-4444-99e6-8497f0d36f34";
 const ws = new WebSocket(`ws://127.0.0.1:8000/ws/rooms/${ROOM_ID}`);
 ws.onmessage = (e) => console.log("msg:", e.data);
 ```
