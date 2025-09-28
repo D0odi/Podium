@@ -1,5 +1,51 @@
 import json
 
+def calculateWpm(response):
+    """
+    Calculates the words per minute (WPM) from a Deepgram transcript response.
+    """
+    try:
+        durationInSeconds = response['metadata']['duration']
+        words = response['results']['channels'][0]['alternatives'][0]['words']
+        
+        if durationInSeconds == 0:
+            return 0
+            
+        wordCount = len(words)
+        durationInMinutes = durationInSeconds / 60
+        wpm = round(wordCount / durationInMinutes)
+        
+        return wpm
+    except (KeyError, IndexError, ZeroDivisionError):
+        return 0
+
+
+
+def countFillerWords(response):
+    """
+    Counts the occurrences of common filler words in a Deepgram transcript.
+    """
+    # A list of common English filler words. You can expand this list.
+    FILLER_WORDS = {
+        "ah", "uh", "um", "hmm", "er", "like", "you know", 
+        "so", "well", "basically", "actually", "literally", "okay"
+    }
+    
+    try:
+        transcript = response['results']['channels'][0]['alternatives'][0]['transcript']
+        words = transcript.lower().split()
+        
+        fillerCount = 0
+        for word in words:
+            # Remove punctuation for accurate matching
+            cleanedWord = word.strip(".,!?")
+            if cleanedWord in FILLER_WORDS:
+                fillerCount += 1
+        
+        return fillerCount
+    except (KeyError, IndexError):
+        return 0
+
 def calculateLongPauseRatio(response, pauseThreshold=0.3):
     """
     Analyzes a Deepgram response to find the ratio of unusually long pauses.

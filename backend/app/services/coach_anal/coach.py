@@ -1,9 +1,9 @@
 from openai import OpenAI
 import os
+import json
 
 
-
-def coach_result(OPENAI_API_KEY, transcript, deep_analysis, stutters):
+def coach_result(OPENAI_API_KEY, transcript, deep_analysis, stutters, wpm, speech_duration, filler_words):
     client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENAI_API_KEY,
@@ -34,10 +34,15 @@ def coach_result(OPENAI_API_KEY, transcript, deep_analysis, stutters):
         - The "shortcomings" object must contain exactly three distinct, actionable areas for improvement.
         - Base your feedback on both the transcript content, deep analysis, and the fluency analysis data.
         - Keep the feedback concise, professional, and encouraging.
+        - The root of the JSON should have keys: "wpm", "speechDuration", "fillerWords", "upsides", and "shortcomings".
+        - Base your feedback on all provided data.
 
         **Required JSON Format:**
         ```json
         {{
+        "wpm": {wpm},
+        "speechDuration": {speech_duration:.2f},
+        "fillerWords": {filler_words},
         "upsides": {{
             "strengthOne": "Description of the first strength.",
             "strengthTwo": "Description of the second strength.",
@@ -63,4 +68,5 @@ def coach_result(OPENAI_API_KEY, transcript, deep_analysis, stutters):
     response_format={"type": "json_object"},
     )
 
-    return completion.choices[0].message.content
+    rawResponse = completion.choices[0].message.content
+    return json.loads(rawResponse)

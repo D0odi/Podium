@@ -1,6 +1,6 @@
 from speech_to_text import convert_speech
 from analyze_text import analyze
-from util import calculateLongPauseRatio
+from util import calculateLongPauseRatio, calculateWpm, countFillerWords
 from coach import coach_result
 import os
 import json
@@ -8,12 +8,11 @@ from dotenv import load_dotenv
 
 
 load_dotenv() 
-
 AUDIO_FILE = "lev_megaum.wav"
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-def main():
+def anal():
     transcribed_text_json = convert_speech(AUDIO_FILE, DEEPGRAM_API_KEY)
     #print (type(transcribed_text_json))
     #print(transcribed_text_json.to_json(indent = 4))
@@ -29,5 +28,7 @@ def main():
     #print(json.dumps(analysis_response, indent = 4))
 
     print(transcribed_text)
-    print(coach_result(OPENAI_API_KEY, transcribed_text, analysis_response, calculateLongPauseRatio(transcribed_text_json)))
+    response_coach = coach_result(OPENAI_API_KEY, transcribed_text, analysis_response, calculateLongPauseRatio(transcribed_text_json), calculateWpm (transcribed_text_json), transcribed_text_json['metadata']['duration'],  countFillerWords(transcribed_text_json))
+
+    #print(response_coach)
 
