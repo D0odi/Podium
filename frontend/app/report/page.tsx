@@ -27,7 +27,45 @@ function computeFillerStats(transcriptText: string) {
   };
 }
 
-import { ChartRadialShape } from "@/components/chart-radial-shape";
+/*Format from seconds to mm:ss*/
+function formatSeconds(totalSeconds: number) {
+  if (!Number.isFinite(totalSeconds)) {
+    return "--:--";
+  }
+  const clamped = Math.max(0, Math.round(totalSeconds));
+  const minutes = Math.floor(clamped / 60);
+  const seconds = clamped % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function computeDurationStats(actualSeconds: number, goalSeconds: number) {
+  const ratio = goalSeconds > 0 ? actualSeconds / goalSeconds : 0;
+  const differenceSeconds = actualSeconds - goalSeconds;
+  const percentDiff = goalSeconds > 0 ? (differenceSeconds / goalSeconds) * 100 : 0;
+  let color: string;
+
+  if (goalSeconds > 0) {
+    if (actualSeconds < goalSeconds) {
+      color = "#3b82f6"; // blue color for under the goal
+    } else if (actualSeconds > goalSeconds) {
+      color = "#ef4444"; // red color for over the goal
+    } else {
+      color = "#10b981"; // green color for on the goal
+    }
+  } else {
+    color = "#10b981";
+  }
+
+  return {
+    ratio,
+    differenceSeconds,
+    percentDiff,
+    color,
+  };
+}
+
+import { ChartRadialShape as ChartRadialShapeMetric } from "@/components/chart-radial-shape1"
+import { ChartRadialShape as ChartRadialShapeDuration } from "@/components/chart-radial-shape2"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Spotlight } from "@/components/ui/spotlight-new";
 import { ChartRadialStacked } from "@/components/chart-radial-stacked";
@@ -41,6 +79,12 @@ export default function ReportPage() {
   };
 
   const filler = computeFillerStats(sampleTranscript.text);
+
+  /*Computations for the Duration timer*/
+  const sampleDuration = { actualSeconds: 350, goalSeconds: 480,};
+  const duration = computeDurationStats(sampleDuration.actualSeconds, sampleDuration.goalSeconds);
+  const durationEndAngle = Math.min(360, Math.max(0, duration.ratio * 360));
+  
   return (
     <main className="relative min-h-screen overflow-x-hidden">
       <div className="min-h-dvh w-full rounded-md bg-black/[0.96] pb-16 antialiased bg-grid-white/[0.02] relative overflow-hidden">
@@ -65,7 +109,7 @@ export default function ReportPage() {
             </div>
           </CardHeader>
           <CardContent className="pt-4">
-            <ChartRadialShape
+            <ChartRadialShapeMetric
               value={Number(filler.percentage.toFixed(1))}
               caption="Filler %"
               withinCard
@@ -90,19 +134,34 @@ export default function ReportPage() {
           </CardContent>
         </Card>
 
+
         {/* Duration Deviation */}
         <Card>
           <CardHeader className="pb-0">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Duration vs Goal</CardTitle>
+              <CardTitle className="text-sm font-medium">Duration</CardTitle>
               <CardDescription>mm:ss</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="h-24 grid place-items-center text-3xl font-semibold">--:--</div>
+            <ChartRadialShapeDuration
+              value={sampleDuration.actualSeconds / 60}
+              caption="Duration"
+              withinCard
+              title="Time Accuracy"
+              description="Closer to goal is better"
+              footerPrimary={`${formatSeconds(sampleDuration.actualSeconds)} actual vs ${formatSeconds(sampleDuration.goalSeconds)} goal`}
+              color={duration.color}
+              valueUnit=" min"
+              endAngle={durationEndAngle}
+            />
+            <div className="mt-3 text-xs text-muted-foreground">
+              <span className="text-foreground font-medium">{formatSeconds(sampleDuration.actualSeconds)}</span> actual vs {formatSeconds(sampleDuration.goalSeconds)} goal duration
+            </div>
             <p className="text-xs text-muted-foreground mt-3">See how closely you matched your target time.</p>
           </CardContent>
         </Card>
+
 
         {/* Speech Rate */}
         <Card>
@@ -185,3 +244,5 @@ export default function ReportPage() {
     </main>
   );
 }
+
+
