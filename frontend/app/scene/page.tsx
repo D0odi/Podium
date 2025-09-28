@@ -226,14 +226,14 @@ export default function ScenePage() {
 
       {/* Voice visualization + transcript (bottom) */}
       <footer className="flex flex-row relative">
-        <aside className="absolute bottom-6 left-4 flex items-center justify-center">
+        {/* <aside className="absolute bottom-6 left-4 flex items-center justify-center">
           <div
             className="size-20 rounded-full border bg-card text-card-foreground flex items-center justify-center text-xs font-medium"
             aria-label="Coach"
           >
             Coach
           </div>
-        </aside>
+        </aside> */}
         <div className="flex-1 rounded-xl py-3 flex items-center justify-center text-sm ">
           <div className="w-full max-w-5xl mx-auto">
             <AudioRecorderWithVisualizer

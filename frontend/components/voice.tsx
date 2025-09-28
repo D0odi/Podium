@@ -3,8 +3,9 @@
 import { SpeechStream } from "@/lib/speechStream";
 import { cn } from "@/lib/utils";
 import { transcriptWs } from "@/lib/wsClient";
-import { AnimatePresence, motion } from "framer-motion";
-import { Download, FileDown, Mic, Trash } from "lucide-react";
+import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
+import { ArrowRightToLine, Download, Mic, Trash } from "lucide-react";
+import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
@@ -85,6 +86,11 @@ export const AudioRecorderWithVisualizer = ({
   const [finalText, setFinalText] = useState<string>("");
   const [interimText, setInterimText] = useState<string>("");
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const [isOlgaVisible, setIsOlgaVisible] = useState<boolean>(false);
+  const olgaTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [uiPhase, setUiPhase] = useState<"idle" | "recording" | "final">(
+    "idle"
+  );
 
   async function ensureTranscriptWs() {
     if (!roomId) return;
@@ -143,6 +149,7 @@ export const AudioRecorderWithVisualizer = ({
       .start()
       .then(() => {
         setIsRecording(true);
+        setUiPhase("recording");
         ensureTranscriptWs();
         mediaRecorderRef.current = {
           stream: speech.getStream(),
@@ -150,6 +157,15 @@ export const AudioRecorderWithVisualizer = ({
           mediaRecorder: null,
           audioContext: null,
         };
+
+        // Schedule avatar pop-in 2s after recording starts
+        try {
+          setIsOlgaVisible(false);
+          if (olgaTimeoutRef.current) clearTimeout(olgaTimeoutRef.current);
+          olgaTimeoutRef.current = setTimeout(() => {
+            setIsOlgaVisible(true);
+          }, 2000);
+        } catch {}
       })
       .catch((error) => {
         try {
@@ -256,170 +272,220 @@ export const AudioRecorderWithVisualizer = ({
 
   function resetRecording() {
     dbg("resetRecording called");
-    const { mediaRecorder, stream, analyser, audioContext } =
-      mediaRecorderRef.current;
-
-    // Invalidate any in-flight transcription events (handled within SpeechStream)
-    mediaRecorder?.stop();
-
-    // Close Deepgram via SpeechStream
+    // Soft reset: keep recording session alive, just clear buffers and UI state
     try {
-      speechRef.current?.stop();
+      speechRef.current?.clearBuffers?.();
     } catch {}
-    try {
-      transcriptWs.disconnect();
-    } catch {}
-
-    // Stop the web audio context and the analyser node
-    if (analyser) {
-      analyser.disconnect();
-    }
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-    if (audioContext) {
-      audioContext.close();
-    }
-    setIsRecording(false);
-    setIsRecordingFinished(true);
     setTimer(0);
     clearTimeout(timerTimeout);
 
-    // Clear the animation frame and canvas
-    cancelAnimationFrame(animationRef.current || 0);
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const canvasCtx = canvas.getContext("2d");
-      if (canvasCtx) {
-        const WIDTH = canvas.width;
-        const HEIGHT = canvas.height;
-        canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
-      }
-    }
+    // Clear the animation frame and canvas content
+    // cancelAnimationFrame(animationRef.current || 0);
+    // const canvas = canvasRef.current;
+    // if (canvas) {
+    //   const canvasCtx = canvas.getContext("2d");
+    //   if (canvasCtx) {
+    //     const WIDTH = canvas.width;
+    //     const HEIGHT = canvas.height;
+    //     canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
+    //   }
+    // }
 
-    // Revoke any existing audio object URL and clear current record
+    // Clear current record and transcript text
     try {
       if (typeof currentRecord.file === "string") {
         URL.revokeObjectURL(currentRecord.file as string);
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
     setCurrentRecord({ id: -1, name: "", file: null });
-
-    // Clear transcript text
     setFinalText("");
     setInterimText("");
   }
 
+  // Clear only current buffers and texts without stopping recording
+  function clearCurrent() {
+    dbg("clearCurrent called");
+    try {
+      speechRef.current?.clearBuffers();
+    } catch {}
+    setFinalText("");
+    setInterimText("");
+    setTimer(0);
+  }
+
   return (
     <div className={cn("w-full relative", className)}>
-      <AnimatePresence>
-        {!isRecording ? (
-          <motion.div
-            className="absolute inset-0 z-10 flex items-center justify-center"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-          >
-            <motion.button
-              onClick={() => startRecording()}
-              className="inline-flex h-16 w-16 md:h-20 md:w-20 items-center justify-center rounded-full border bg-card text-card-foreground shadow-lg"
-              aria-label="Start recording"
-              title="Start recording"
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+      <LayoutGroup id="voice-cta-group">
+        {/* Centered CTA visible when not in recording phase (idle/final) */}
+        <AnimatePresence initial={false} mode="popLayout">
+          {uiPhase !== "recording" ? (
+            <motion.div
+              className="absolute inset-0 z-10 flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
             >
-              <Mic size={22} />
-            </motion.button>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-      <div className="w-full grid grid-cols-[auto_1fr] items-center gap-2">
-        <div className="flex gap-2">
-          {isRecording ? (
-            <button
-              onClick={resetRecording}
-              className="inline-flex h-12 w-12 items-center justify-center rounded-md border bg-card text-card-foreground hover:bg-accent hover:text-accent-foreground"
-              aria-label="Reset recording"
-              title="Reset recording"
-            >
-              <Trash size={16} />
-            </button>
-          ) : null}
+              <div className="flex items-center gap-3">
+                {uiPhase !== "idle" ? (
+                  <motion.button
+                    layout
+                    onClick={() => {}}
+                    className="inline-flex min-h-[6rem] px-6 min-w-24 items-center justify-center rounded-lg border text-card-foreground shadow-lg hover:bg-accent hover:text-accent-foreground"
+                    style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}
+                    initial={{ scale: 1 }}
+                    animate={{ scale: 1 }}
+                    whileHover={{ scale: 1.01 }}
+                    transition={{ type: "spring", stiffness: 280, damping: 28 }}
+                    title="Q&A"
+                  >
+                    <span className="text-xl tracking-wider font-medium">
+                      Q&A
+                    </span>
+                  </motion.button>
+                ) : null}
 
-          {isRecording ? (
-            <button
-              onClick={downloadCurrentAudio}
-              className="inline-flex h-12 w-12 items-center justify-center rounded-md border bg-card text-card-foreground hover:bg-accent hover:text-accent-foreground"
-              aria-label="Download audio"
-              title="Download audio"
-            >
-              <Download size={16} />
-            </button>
+                <motion.button
+                  layout
+                  layoutId="big-cta"
+                  onClick={() => {
+                    if (uiPhase === "idle") startRecording();
+                  }}
+                  className="inline-flex min-h-[6rem] min-w-28 px-6 items-center justify-center gap-3 rounded-lg border text-card-foreground shadow-lg hover:bg-accent hover:text-accent-foreground"
+                  style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}
+                  initial={{ scale: 1 }}
+                  animate={{ scale: 1 }}
+                  whileHover={{ scale: 1.01 }}
+                  transition={{ type: "spring", stiffness: 280, damping: 28 }}
+                >
+                  {uiPhase === "idle" ? (
+                    <Mic size={28} />
+                  ) : (
+                    <span className="text-xl tracking-wider font-medium">
+                      Final report?
+                    </span>
+                  )}
+                </motion.button>
+              </div>
+            </motion.div>
           ) : null}
+        </AnimatePresence>
+
+        <div className="w-full grid grid-cols-[1fr_auto] grid-rows-[auto_auto] gap-2">
+          <div className="w-full grid grid-cols-[auto_1fr] items-center gap-2">
+            <div className="flex gap-2">
+              {uiPhase === "recording" ? (
+                <button
+                  onClick={resetRecording}
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-md border bg-card text-card-foreground hover:bg-accent hover:text-accent-foreground"
+                  title="Reset recording"
+                >
+                  <Trash size={16} />
+                </button>
+              ) : null}
+
+              {uiPhase === "recording" ? (
+                <button
+                  onClick={downloadCurrentAudio}
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-md border bg-card text-card-foreground hover:bg-accent hover:text-accent-foreground"
+                  title="Download audio"
+                >
+                  <Download size={16} />
+                </button>
+              ) : null}
+            </div>
+
+            <motion.div
+              className={cn(
+                "flex items-center gap-2 min-w-0",
+                uiPhase !== "recording" && "pointer-events-none"
+              )}
+              initial={false}
+              animate={{ opacity: uiPhase === "recording" ? 1 : 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+            >
+              {uiPhase === "recording" ? (
+                <Timer
+                  hourLeft={hourLeft}
+                  hourRight={hourRight}
+                  minuteLeft={minuteLeft}
+                  minuteRight={minuteRight}
+                  secondLeft={secondLeft}
+                  secondRight={secondRight}
+                  timerClassName={cn("h-12", timerClassName)}
+                />
+              ) : null}
+              <canvas
+                ref={canvasRef}
+                className="h-12 w-full bg-background border rounded-md"
+              />
+            </motion.div>
+          </div>
+
+          {uiPhase === "recording" ? (
+            <div className="row-span-2 relative flex items-stretch rounded-lg overflow-visible">
+              <motion.div
+                className="absolute z-0 -right-13 top-1 rotate-[45deg] pointer-events-none select-none"
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{
+                  opacity: isOlgaVisible ? 1 : 0,
+                  scale: isOlgaVisible ? 1 : 0.8,
+                }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              >
+                <Image
+                  src="/avatars/olga-noback.jpeg"
+                  alt="Olga"
+                  className="opacity-70"
+                  width={90}
+                  height={90}
+                />
+              </motion.div>
+              <motion.button
+                layout
+                layoutId="big-cta"
+                onClick={() => {
+                  clearCurrent();
+                  setIsRecording(false);
+                  setUiPhase("final");
+                  setIsOlgaVisible(false);
+                  if (olgaTimeoutRef.current)
+                    clearTimeout(olgaTimeoutRef.current);
+                }}
+                className="relative shadow-md shadow-black z-10 inline-flex h-full min-h-[6rem] w-28 items-center justify-center rounded-lg border  text-card-foreground hover:bg-accent hover:text-accent-foreground"
+                style={{ backgroundColor: "oklch(0.216 0.006 56.043)" }}
+                title="Clear current audio and transcript"
+                initial={{ scale: 1 }}
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 280, damping: 28 }}
+              >
+                <ArrowRightToLine size={40} />
+              </motion.button>
+            </div>
+          ) : (
+            <div />
+          )}
+
+          <div className="flex items-end gap-2 min-w-0">
+            <motion.div
+              ref={transcriptRef as any}
+              className={cn(
+                "rounded-md border bg-background text-lg leading-relaxed text-foreground h-12 w-full overflow-x-auto overflow-y-hidden flex items-center px-3 min-w-0",
+                uiPhase !== "recording" && "pointer-events-none"
+              )}
+              initial={false}
+              animate={{ opacity: uiPhase === "recording" ? 1 : 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+            >
+              <span className="whitespace-nowrap">{finalText} </span>
+              <span className="opacity-60 whitespace-nowrap">
+                {interimText}
+              </span>
+            </motion.div>
+          </div>
         </div>
-
-        <motion.div
-          className={cn(
-            "flex items-center gap-2",
-            !isRecording && "pointer-events-none"
-          )}
-          initial={false}
-          animate={{ opacity: isRecording ? 1 : 0 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-        >
-          {isRecording ? (
-            <Timer
-              hourLeft={hourLeft}
-              hourRight={hourRight}
-              minuteLeft={minuteLeft}
-              minuteRight={minuteRight}
-              secondLeft={secondLeft}
-              secondRight={secondRight}
-              timerClassName={cn("h-12", timerClassName)}
-            />
-          ) : null}
-          <canvas
-            ref={canvasRef}
-            className="h-12 w-full bg-background border rounded-md"
-          />
-        </motion.div>
-      </div>
-
-      <div className="mt-2 flex items-end gap-2">
-        <motion.div
-          ref={transcriptRef as any}
-          className={cn(
-            "rounded-md border bg-background text-lg leading-relaxed text-foreground h-12 w-full overflow-x-auto overflow-y-hidden flex items-center px-3",
-            !isRecording && "pointer-events-none"
-          )}
-          initial={false}
-          animate={{ opacity: isRecording ? 1 : 0 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-        >
-          <span className="whitespace-nowrap">{finalText} </span>
-          <span className="opacity-60 whitespace-nowrap">{interimText}</span>
-        </motion.div>
-        {isRecording ? (
-          <motion.button
-            onClick={downloadTranscript}
-            className="inline-flex h-12 w-12 items-center justify-center rounded-md border bg-card text-card-foreground hover:bg-accent hover:text-accent-foreground"
-            aria-label="Download transcript"
-            title="Download transcript"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-          >
-            <FileDown size={16} />
-          </motion.button>
-        ) : null}
-      </div>
+      </LayoutGroup>
     </div>
   );
 };

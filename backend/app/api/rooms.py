@@ -30,7 +30,7 @@ async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomRe
     bots_api: list[SchemaBot] = []
 
     # Create bots using a single AI-generated persona pool
-    num_bots = 10
+    num_bots = 1
     topic = body.topic.strip()
     personas = await generatePersonaPool(topic=topic, count=num_bots)
     print(f"[rooms] persona pool fetched count={len(personas)} topic='{topic}'")
