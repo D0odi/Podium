@@ -10,24 +10,26 @@ from deepgram import (
 
 def convert_speech(audio_path, deepgram_api) :
     try:
+        # Set a generous timeout (30 minutes) to handle long audio uploads & processing
         deepgram = DeepgramClient(deepgram_api)
 
         with open(audio_path, "rb") as file:
-            buffer_data = file.read()
-
-        payload: FileSource = {
-            "buffer": buffer_data,
-        }
+            payload: FileSource = {"buffer": file.read()}
 
         options = PrerecordedOptions(
             model="nova-3",
             smart_format=True,
             filler_words=True,
             utterances=True,
-            utt_split=1
+            utt_split=1,
         )
 
-        response = deepgram.listen.rest.v("1").transcribe_file(payload, options)
+        # Direct synchronous call with extended timeout (seconds)
+        response = deepgram.listen.prerecorded.v("1").transcribe_file(
+            payload,
+            options,
+            timeout=1800,
+        )
 
         return response
 

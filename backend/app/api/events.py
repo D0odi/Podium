@@ -30,3 +30,19 @@ async def publish_bot_reaction(
     return {"status": "queued"}
 
 
+class CoachFeedbackEvent(BaseModel):
+    roomId: str
+    feedback: dict
+
+
+@router.post("/coach-feedback", status_code=202)
+async def publish_coach_feedback(
+    body: CoachFeedbackEvent,
+    bus: EventBus = Depends(get_bus),
+) -> dict:
+    if not body.roomId:
+        raise HTTPException(status_code=400, detail="roomId is required")
+    await bus.publish("coach:feedback", body.model_dump())
+    return {"status": "queued"}
+
+
