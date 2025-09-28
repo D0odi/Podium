@@ -15,6 +15,7 @@ class Room:
     bots: Dict[str, ServiceBot] = field(default_factory=dict)
     transcript: Deque[Tuple[datetime, str]] = field(default_factory=lambda: deque(maxlen=1000))
     category: Optional[str] = None
+    duration_seconds: Optional[int] = None
 
 class RoomManager:
     def __init__(self) -> None:
@@ -35,6 +36,15 @@ class RoomManager:
     def get_category(self, room_id: str) -> Optional[str]:
         room = self.ensure_room(room_id)
         return room.category
+
+    def set_duration(self, room_id: str, duration_seconds: Optional[int]) -> None:
+        room = self.ensure_room(room_id)
+        room.duration_seconds = duration_seconds
+        room.updated_at = datetime.now(timezone.utc)
+
+    def get_duration(self, room_id: str) -> Optional[int]:
+        room = self.ensure_room(room_id)
+        return room.duration_seconds
 
     def add_bot_to_room(self, room_id: str, bot: ServiceBot) -> None:
         room = self.ensure_room(room_id)

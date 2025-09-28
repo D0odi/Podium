@@ -22,6 +22,11 @@ router = APIRouter(prefix="/rooms", tags=["rooms"])
 async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomResponse:
     room_id = str(uuid.uuid4())
     request.app.state.room_manager.set_category(room_id, body.category)
+    # store requested duration if provided
+    try:
+        request.app.state.room_manager.set_duration(room_id, int(body.durationSeconds))
+    except Exception:
+        request.app.state.room_manager.set_duration(room_id, None)
     bots_api: list[SchemaBot] = []
 
     # Create bots using a single AI-generated persona pool
@@ -67,6 +72,7 @@ async def create_room(request: Request, body: CreateRoomRequest) -> CreateRoomRe
         updatedAt=datetime.now(timezone.utc),
         bots=bots_api,
         category=body.category,
+        durationSeconds=request.app.state.room_manager.get_duration(room_id),
     )
 
 def get_bus(request: Request) -> EventBus:
