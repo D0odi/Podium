@@ -30,6 +30,7 @@ function computeFillerStats(transcriptText: string) {
 import { ChartRadialShape } from "@/components/chart-radial-shape";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Spotlight } from "@/components/ui/spotlight-new";
+import { ChartRadialStacked } from "@/components/chart-radial-stacked";
 import { CoachMessage } from "@/components/coach-message";
 
 export default function ReportPage() {
@@ -108,12 +109,51 @@ export default function ReportPage() {
           <CardHeader className="pb-0">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium">Speech Rate (WPM)</CardTitle>
-              <CardDescription>min–avg–max</CardDescription>
+              <CardDescription>min-max</CardDescription>
             </div>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="h-24 grid place-items-center text-3xl font-semibold">-- WPM</div>
-            <p className="text-xs text-muted-foreground mt-3">Target 130–170 WPM for a natural pace.</p>
+            {(() => {
+              // TODO: Replace with backend-provided durations and per-window WPM series
+              const placeholderDurationSeconds = 125;
+              const placeholderWords = 280;
+              const wpmAvg = Math.round((placeholderWords / (placeholderDurationSeconds / 60)) || 0);
+              const wpmMin = 110; // placeholder min per sliding window
+              const wpmMax = 190; // placeholder max per sliding window
+              const wpmColor =
+                wpmAvg < 110 || wpmAvg > 190
+                  ? "#ef4444" // red
+                  : wpmAvg < 130 || wpmAvg > 170
+                  ? "#f59e0b" // amber
+                  : "#10b981"; // green
+              const wpmStatus =
+                wpmAvg < 110
+                  ? "Pace: too slow"
+                  : wpmAvg < 130
+                  ? "Pace: slightly slow"
+                  : wpmAvg <= 170
+                  ? "Pace: within optimal range"
+                  : wpmAvg <= 190
+                  ? "Pace: slightly fast"
+                  : "Pace: too fast";
+
+              return (
+                <>
+                  <ChartRadialStacked
+                    avg={wpmAvg}
+                    min={wpmMin}
+                    max={wpmMax}
+                    single
+                    barColor={wpmColor}
+                    withinCard
+                    title="Speech Rate"
+                    description="Average WPM vs optimal zone"
+                  />
+                  <p className="text-xs text-muted-foreground mt-3">{wpmStatus}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Target 130–170 WPM</p>
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
             </section>
