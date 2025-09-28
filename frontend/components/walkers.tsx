@@ -195,9 +195,15 @@ function Walker({
           <motion.div
             initial={false}
             animate={
-              prevVisible ? { opacity: 0.9, y: -2 } : { opacity: 0, y: -8 }
+              prevVisible
+                ? { opacity: 0.95, y: -2 }
+                : { opacity: [0.95, 0.95, 0], y: -8 }
             }
-            transition={{ duration: 1.3, ease: "easeOut" }}
+            transition={{
+              duration: 1.3,
+              ease: "easeOut",
+              opacity: { times: [0, 0.85, 1] },
+            }}
             className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-md bg-card text-card-foreground border px-2 py-1 text-md whitespace-nowrap shadow z-[1]"
             style={{ willChange: "opacity, transform" }}
           >
@@ -206,8 +212,14 @@ function Walker({
         ) : null}
         <motion.div
           initial={false}
-          animate={showSpeech ? { opacity: 1, y: 0 } : { opacity: 0, y: -6 }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
+          animate={
+            showSpeech ? { opacity: 1, y: 0 } : { opacity: [1, 1, 0], y: -6 }
+          }
+          transition={{
+            duration: 1.2,
+            ease: "easeOut",
+            opacity: { times: [0, 0.85, 1] },
+          }}
           className="absolute -top-8 left-1/2 -translate-x-1/2 rounded-md bg-card text-card-foreground border px-2 py-1 text-md whitespace-nowrap shadow z-[2]"
           style={{ willChange: "opacity, transform" }}
         >

@@ -234,6 +234,23 @@ export class SpeechStream {
       // ignore
     }
   }
+
+  // Clear only buffered downloadable audio without stopping stream
+  clearBuffers(): void {
+    try {
+      this.chunks = [];
+      if (this.recorder && this.recorder.state === "recording") {
+        try {
+          this.recorder.stop();
+        } catch {}
+        try {
+          this.recorder.start(1000);
+        } catch {}
+      }
+    } catch {
+      // ignore
+    }
+  }
 }
 
 // Convert Float32 PCM to 16-bit little-endian PCM ArrayBuffer
